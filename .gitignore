@@ -1,0 +1,14 @@
+.env
+.venv/
+.venv_broken/
+.tmp/
+__pycache__/
+*.py[cod]
+
+# Generated assets / datasets
+gestionPublication/output/
+gestionPublication/generationImage/ranim data/
+
+# OS/editor
+.DS_Store
+Thumbs.db

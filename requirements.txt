@@ -1,0 +1,9 @@
+flask
+google-genai
+pydantic
+hijridate
+pandas
+openpyxl
+Pillow
+numpy
+huggingface_hub
