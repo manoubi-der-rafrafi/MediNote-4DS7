@@ -1,0 +1,11 @@
+pandas
+openpyxl
+numpy
+scikit-learn
+sentence-transformers
+faiss-cpu
+Pillow
+requests
+mistralai
+huggingface_hub
+google-generativeai

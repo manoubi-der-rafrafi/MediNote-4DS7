@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-04-15",
+  "next_holiday": {
+    "fete": "Eid al-Adha",
+    "date": "2026-06-06",
+    "top_produit": "Vitonic Zinc Vit.D3 30 Gélules",
+    "score": 0.4,
+    "images": [
+      {
+        "type": "fetes_instit",
+        "data": {
+          "image_locale": "C:\\Users\\HP\\Desktop\\MediNoteScraping\\AgentMedia\\AgentMedia\\data+model\\outputs\\campaign_images\\image_fetes_eid_al_adha.jpg",
+          "url_image_produit": null,
+          "use_product_image": false,
+          "categorie": "religieuse"
+        },
+        "posts": {
+          "facebook": "**\"À l’aube de l’Aïd al-Adha, Vital Laboratories s’associe à la joie et à la ferveur de chaque famille tunisienne. Ce moment sacré, où le partage et la générosité unissent les cœurs, nous rappelle l’importance de la solidarité et de l’espoir. Puisse cette fête apporter paix, bénédictions et réconfort à tous.**\n\n**Que cette célébration soit l’occasion de renforcer les liens qui nous rassemblent, dans le respect et la gratitude. Eid Mubarak !\"**\n\n#AïdAlAdha #Solidarité #Unité #VitalLaboratoriesTunisie\n*HORAIRE : 19h30*",
+          "instagram": "**\"En ce jour sacré d’Eid al-Adha, Vital Laboratories partage avec vous l’esprit de générosité, de partage et d’unité. Que cette fête renforce les liens familiaux et apporte paix et bénédictions à tous. 🤲✨\"**\n\n#EidAlAdha #Solidarité #Famille #VitalLaboratories"
+        },
+        "post_ids": [
+          "POST_0035",
+          "POST_0036"
+        ]
+      },
+      {
+        "type": "saison_produit",
+        "data": {
+          "image_locale": "C:\\Users\\HP\\Desktop\\MediNoteScraping\\AgentMedia\\AgentMedia\\data+model\\outputs\\campaign_images\\image_vitonic_zinc_vit_d3_30_gé_eid_al_adha_saison.jpg",
+          "url_image_produit": "https://vital.com.tn/cdn/shop/products/vitonic-zinc-vit-d3.jpg",
+          "use_product_image": true,
+          "categorie": "religieuse"
+        },
+        "posts": {
+          "facebook": "Les festins d’Eid al-Adha, aussi délicieux soient-ils, laissent parfois une petite lourdeur… Et si on prenait soin de son corps avant même que la fatigue ne s’installe ?\n\nEntre les repas copieux et les journées bien remplies, notre énergie et notre digestion peuvent en prendre un coup. C’est le moment idéal pour offrir à son corps un soutien complet, surtout quand on sait que les vitamines et minéraux jouent un rôle clé dans notre bien-être au quotidien.\n\nVitonic Zinc Vit.D3, c’est cette formule équilibrée qui accompagne des milliers de familles tunisiennes : avec son fer pour l’énergie, ses oméga-3 pour le cœur et ses probiotiques pour une digestion apaisée, c’est un allié discret mais efficace. Comme le disent nos clientes : *\"Je me sens moins fatiguée et plus légère, même après les repas de fête !\"*\n\nUn petit geste pour soi, pour profiter pleinement de ces moments en famille. Disponible en pharmacie 💙.\n\n#BienÊtreTunisie #SantéNaturelle #EidAlAdha #VitalLaboratories #عید_مبارک #صحة_الأسرة",
+          "instagram": "Les repas copieux de l’Aïd laissent parfois une sensation de lourdeur… Et si on aidait notre corps à retrouver son équilibre ? 🍽️✨\n\nEntre les excès et le changement de rythme, notre énergie et notre digestion peuvent en prendre un coup. Heureusement, des solutions douces existent pour soutenir notre bien-être au quotidien.\n\nVitonic Zinc Vit.D3, c’est la formule complète plébiscitée par des milliers de familles : zinc pour l’immunité, vitamine D3 pour les os, et des probiotiques pour une digestion apaisée. Un coup de pouce naturel, sans prise de tête.\n\nPrenez soin de vous, comme on prend soin des siens. 💙 Disponible en pharmacie.\n\n#BienÊtreNaturel #AïdEnForme #SantéFamille #VitalLaboratoriesTN #عيدة_سعادة #صحة_الأسرة"
+        },
+        "post_ids": [
+          "POST_0037",
+          "POST_0038"
+        ]
+      }
+    ]
+  },
+  "seasonal_campaigns": [
+    {
+      "saison": "Printemps - Allergies & Detox",
+      "produit": "Vitosine Eosine Aqueuse 2%",
+      "score": 0.4,
+      "facebook": "Printemps - Allergies & Detox: quand le printemps declenche les allergies et favorise les cures bien-etre. Vitosine Eosine Aqueuse 2% apporte une reponse concrete grace a Eau/Aqua/, Disodium Eosin, Sodium Benzoate, Potassium Sorbate, Citric Acid. Ses benefices sur Nettoie et assèche les lésions de la peau susceptibles de se surinfecter, notamment nouveau-né (cordon ombilical et érythème fessier). en font une option utile pour cette periode. Disponible en pharmacie. #Printemps #Allergies #Detox #Vitamines #Printanieres #Vital",
+      "instagram": "Printemps - Allergies & Detox: quand le printemps declenche les allergies et favorise les cures bien-etre. Vitosine Eosine Aqueuse 2% apporte une reponse concrete grace a Eau/Aqua/, Disodium Eosin, Sodium Benzoate, Potassium Sorbate, Citric Acid. Ses benefices sur Nettoie et assèche les lésions de la peau susceptibles de se surinfecter, notamment nouveau-né (cordon ombilical et érythème fessier). en font une option utile pour cette periode. Disponible en pharmacie. #Printemps #Allergies #Detox #Vitamines #Printanieres #Vital",
+      "image_locale": "C:\\Users\\HP\\Desktop\\MediNoteScraping\\AgentMedia\\AgentMedia\\data+model\\outputs\\campaign_images\\image_saison_printemps___allergies___detox.jpg",
+      "url_image_produit": "https://vital.com.tn/wp-content/uploads/2017/05/logo.png"
+    }
+  ],
+  "retrieval_backend": "faiss"
+}

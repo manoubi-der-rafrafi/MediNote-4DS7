@@ -1,0 +1,158 @@
+{
+  "New Year's Day": {
+    "type": "saisonniere_sante",
+    "categorie": "saisonniere_sante",
+    "necessite_produit_vital": true,
+    "themes": [
+      "immunite",
+      "anti-rhume",
+      "vitamine d",
+      "energie"
+    ],
+    "style_visuel": "ambiance hiver Tunisie, immunite, anti-rhume, vitamine d, energie",
+    "date": "2035-01-01 00:00:00",
+    "saison": "hiver",
+    "ton": "professionnel et chaleureux",
+    "horaire": "18h00",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de New Year's Day avec respect et unite.",
+    "contexte_sante": "Campagne sante liee a la periode avec focus sur immunite, anti-rhume, vitamine d, energie.",
+    "emoji": "SAISON"
+  },
+  "Revolution Day": {
+    "type": "institutionnel",
+    "categorie": "institutionnel",
+    "necessite_produit_vital": false,
+    "themes": [
+      "image corporate uniquement"
+    ],
+    "style_visuel": "style officiel elegant, drapeau tunisien, ambiance patriotique sobre",
+    "date": "2035-01-14 00:00:00",
+    "saison": "non_applicable",
+    "ton": "solennel, chaleureux et sincere",
+    "horaire": "10h00",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Revolution Day avec respect et unite.",
+    "contexte_sante": "Communication corporate sans mise en avant produit.",
+    "emoji": "INSTITUTIONNEL"
+  },
+  "Independence Day": {
+    "type": "institutionnel",
+    "categorie": "institutionnel",
+    "necessite_produit_vital": false,
+    "themes": [
+      "image corporate uniquement"
+    ],
+    "style_visuel": "style officiel elegant, drapeau tunisien, ambiance patriotique sobre",
+    "date": "2035-03-20 00:00:00",
+    "saison": "non_applicable",
+    "ton": "solennel, chaleureux et sincere",
+    "horaire": "10h00",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Independence Day avec respect et unite.",
+    "contexte_sante": "Communication corporate sans mise en avant produit.",
+    "emoji": "INSTITUTIONNEL"
+  },
+  "Martyrs' Day": {
+    "type": "institutionnel",
+    "categorie": "institutionnel",
+    "necessite_produit_vital": false,
+    "themes": [
+      "image corporate uniquement"
+    ],
+    "style_visuel": "style officiel elegant, drapeau tunisien, ambiance patriotique sobre",
+    "date": "2035-04-09 00:00:00",
+    "saison": "non_applicable",
+    "ton": "solennel, chaleureux et sincere",
+    "horaire": "10h00",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Martyrs' Day avec respect et unite.",
+    "contexte_sante": "Communication corporate sans mise en avant produit.",
+    "emoji": "INSTITUTIONNEL"
+  },
+  "Eid al-Fitr": {
+    "type": "religieuse",
+    "categorie": "religieuse",
+    "necessite_produit_vital": true,
+    "themes": [
+      "digestion",
+      "immunite",
+      "energie"
+    ],
+    "style_visuel": "ambiance sacree, lanternes, tons dores, lumiere chaleureuse",
+    "date": "2035-12-21 00:00:00",
+    "saison": "non_applicable",
+    "ton": "respectueux, familial et rassurant",
+    "horaire": "19h30",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Eid al-Fitr avec respect et unite.",
+    "contexte_sante": "Periode sensible ou les besoins en digestion, immunite, energie deviennent plus visibles.",
+    "emoji": "RELIGIEUX"
+  },
+  "Eid al-Adha": {
+    "type": "religieuse",
+    "categorie": "religieuse",
+    "necessite_produit_vital": true,
+    "themes": [
+      "digestion",
+      "immunite",
+      "energie"
+    ],
+    "style_visuel": "ambiance sacree, lanternes, tons dores, lumiere chaleureuse",
+    "date": "2035-02-26 00:00:00",
+    "saison": "non_applicable",
+    "ton": "respectueux, familial et rassurant",
+    "horaire": "19h30",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Eid al-Adha avec respect et unite.",
+    "contexte_sante": "Periode sensible ou les besoins en digestion, immunite, energie deviennent plus visibles.",
+    "emoji": "RELIGIEUX"
+  },
+  "Islamic New Year": {
+    "type": "saisonniere_sante",
+    "categorie": "saisonniere_sante",
+    "necessite_produit_vital": true,
+    "themes": [
+      "allergies",
+      "detox",
+      "vitamines",
+      "energie"
+    ],
+    "style_visuel": "ambiance printemps Tunisie, allergies, detox, vitamines, energie",
+    "date": "2035-03-19 00:00:00",
+    "saison": "printemps",
+    "ton": "professionnel et chaleureux",
+    "horaire": "18h00",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Islamic New Year avec respect et unite.",
+    "contexte_sante": "Campagne sante liee a la periode avec focus sur allergies, detox, vitamines, energie.",
+    "emoji": "SAISON"
+  },
+  "Republic Day": {
+    "type": "institutionnel",
+    "categorie": "institutionnel",
+    "necessite_produit_vital": false,
+    "themes": [
+      "image corporate uniquement"
+    ],
+    "style_visuel": "style officiel elegant, drapeau tunisien, ambiance patriotique sobre",
+    "date": "2035-07-25 00:00:00",
+    "saison": "non_applicable",
+    "ton": "solennel, chaleureux et sincere",
+    "horaire": "10h00",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Republic Day avec respect et unite.",
+    "contexte_sante": "Communication corporate sans mise en avant produit.",
+    "emoji": "INSTITUTIONNEL"
+  },
+  "Mawlid": {
+    "type": "religieuse",
+    "categorie": "religieuse",
+    "necessite_produit_vital": true,
+    "themes": [
+      "digestion",
+      "immunite",
+      "energie"
+    ],
+    "style_visuel": "ambiance sacree, lanternes, tons dores, lumiere chaleureuse",
+    "date": "2035-05-27 00:00:00",
+    "saison": "non_applicable",
+    "ton": "respectueux, familial et rassurant",
+    "horaire": "19h30",
+    "message_institutionnel": "Vital Laboratories rend hommage a l'esprit de Mawlid avec respect et unite.",
+    "contexte_sante": "Periode sensible ou les besoins en digestion, immunite, energie deviennent plus visibles.",
+    "emoji": "RELIGIEUX"
+  }
+}

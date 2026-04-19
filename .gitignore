@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+outputs/campaign_images/
+social_media_agent_Final.ipynb
+social_media_agent_versionfinal_(1).py
