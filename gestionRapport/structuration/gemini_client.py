@@ -4,7 +4,7 @@ from google import genai
 
 
 DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
-DEFAULT_API_KEY = "AIzaSyAgikj7qAiLn7vyy74T8eMq19wGiLJR4yA"
+DEFAULT_API_KEY = "AIzaSyANVAvHG6RTAHg1rr-2jXR6Os4JN5TgOug"
 
 
 class StructurationGeminiConfigError(RuntimeError):

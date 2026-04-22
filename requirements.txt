@@ -1,9 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# requirements.txt — Projet MediNote + VitalAgent (fusionné)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Web framework ─────────────────────────────────────────────────────────────
 flask
-google-genai
-pydantic
-hijridate
+
+# ── Data ──────────────────────────────────────────────────────────────────────
 pandas
 openpyxl
-Pillow
 numpy
+scikit-learn
+
+# ── LLM / AI clients ──────────────────────────────────────────────────────────
+requests
+google-genai
 huggingface_hub
+
+# ── Validation & schémas ──────────────────────────────────────────────────────
+pydantic
+
+# ── Image / Media ─────────────────────────────────────────────────────────────
+Pillow
+
+# ── Calendrier hijri (gestionPublication) ─────────────────────────────────────
+hijridate
+
+# ── Mode LLM local uniquement (décommenter si LLM_MODE = "local") ────────────
+# torch
+# transformers
+# accelerate
+# bitsandbytes

@@ -6,7 +6,7 @@ from google import genai
 
 
 DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
-DEFAULT_API_KEY = "AIzaSyAgikj7qAiLn7vyy74T8eMq19wGiLJR4yA"
+DEFAULT_API_KEY = "AIzaSyAuZN3t-0fViViq0TIdTLOtle9G5adiAtA"
 VIDEO_MODEL_NAME = "sora-2"
 VIDEO_OUTPUT_FILENAME = "generated_video.mp4"
 VIDEO_SECONDS = "8"

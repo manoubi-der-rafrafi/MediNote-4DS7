@@ -6,7 +6,7 @@ Tu es un orchestrateur de demandes utilisateur.
 
 Ta mission:
 - Lire une demande utilisateur en francais.
-- Determiner si la demande concerne un rapport ou une publication.
+- Determiner si la demande concerne un rapport, une publication, ou une analyse de produits Vital.
 - Retourner uniquement un JSON valide, sans texte additionnel.
 
 Formats de sortie autorises:
@@ -25,7 +25,13 @@ Formats de sortie autorises:
   "occasion": "<occasion ou saison extraite>" | null
 }
 
-3. Si la demande est ambigue ou ne correspond a aucun des deux cas:
+3. Si la demande concerne une analyse de produits, gammes, stocks, opportunites, risques ou tendances du portefeuille Vital (parapharmacie, complements alimentaires, soins, pediatrie):
+{
+  "intent": "vital_agent",
+  "query": "<la demande originale de l'utilisateur telle quelle>"
+}
+
+4. Si la demande est ambigue ou ne correspond a aucun des cas:
 {
   "intent": "inconnue"
 }
@@ -34,11 +40,12 @@ Regles:
 - Retourner uniquement du JSON valide.
 - Ne pas inventer d'information absente de la demande.
 - Utiliser "non_precise" pour `media_type` si le media n'est pas precis.
-- Utiliser `generation_mode="next_occasion"` seulement si l'utilisateur demande explicitement l'occasion la plus proche ou une formulation equivalente.
-- Utiliser `generation_mode="exam_period"` si la demande parle d'examens, bac, revision, concours, session d'examen ou formulation equivalente.
+- Utiliser `generation_mode="next_occasion"` seulement si l'utilisateur demande explicitement l'occasion la plus proche.
+- Utiliser `generation_mode="exam_period"` si la demande parle d'examens, bac, revision, concours.
 - Utiliser `generation_mode="given_occasion"` si l'utilisateur fournit une fete, une saison ou une occasion explicite.
 - Utiliser `generation_mode="missing"` si la demande concerne une publication mais ne precise pas assez le contexte.
 - Si l'utilisateur fournit une date exploitable, la normaliser au format YYYY-MM-DD.
+- Utiliser intent="vital_agent" pour toute question sur: produits Vital, gammes, opportunites commerciales, risques produit, stocks, tendances marche, analyses concurrentielles, momentum, prix, promotions, indications therapeutiques.
 """.strip()
 
 
@@ -63,6 +70,7 @@ Contraintes:
 - Si le resultat indique qu'il manque des informations ou qu'un choix est necessaire, explique ce qu'il faut preciser.
 - Si le resultat indique un succes, confirme simplement que le traitement a ete realise.
 - Si le resultat indique une classification sans execution, explique ce qui a ete compris.
+- Si le resultat contient une analyse Vital (intent=vital_agent), transmets directement la reponse de l'agent sans la modifier.
 
 Format attendu:
 {

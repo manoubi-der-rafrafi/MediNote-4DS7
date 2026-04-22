@@ -43,6 +43,25 @@ def download_product_reference(
             f"L'URL de l'image produit est invalide pour {selected_product['produit']}: {image_url}"
         )
 
+    # Pre-check: verify image is accessible (HEAD request)
+    try:
+        from urllib import request
+        req = request.Request(image_url, method='HEAD')
+        req.add_header('User-Agent', 'Mozilla/5.0')
+        with request.urlopen(req, timeout=10) as response:
+            if response.status != 200:
+                raise ImageGenerationRequestError(
+                    f"L'URL de l'image produit est inaccessible ({response.status}) pour {selected_product['produit']}."
+                )
+    except HTTPError as e:
+        raise ImageGenerationRequestError(
+            f"L'URL de l'image produit est inaccessible ({e.code}) pour {selected_product['produit']}."
+        )
+    except Exception as e:
+        raise ImageGenerationRequestError(
+            f"L'URL de l'image produit est inaccessible pour {selected_product['produit']}: {e}"
+        )
+
     Image, _, _, _ = _get_pillow_modules()
 
     try:

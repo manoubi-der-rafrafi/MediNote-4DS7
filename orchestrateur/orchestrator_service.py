@@ -26,6 +26,30 @@ from .prompts import (
     build_orchestrator_user_prompt,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# VitalAgent — import lazy pour éviter le chargement des données au démarrage
+# ─────────────────────────────────────────────────────────────────────────────
+_vital_agent_instance = None
+
+
+def _get_vital_agent():
+    """
+    Retourne l'instance singleton de VitalAgent.
+    Import et instanciation différés : le chargement des données (~données Excel)
+    n'est déclenché qu'à la première question business (lazy-load interne à VitalAgent).
+    """
+    global _vital_agent_instance
+    if _vital_agent_instance is None:
+        # Import dynamique — VitalAgent doit être accessible dans le PYTHONPATH.
+        # Ajoutez le dossier PI_profondd au sys.path si nécessaire (voir run.py ou app/__init__.py).
+        from vital_agent.agent import VitalAgent  # noqa: PLC0415
+        _vital_agent_instance = VitalAgent()
+    return _vital_agent_instance
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Exceptions
+# ─────────────────────────────────────────────────────────────────────────────
 
 class OrchestratorConfigError(RuntimeError):
     pass
@@ -43,6 +67,10 @@ class OrchestratorProcessingError(RuntimeError):
     pass
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# OrchestratorService
+# ─────────────────────────────────────────────────────────────────────────────
+
 class OrchestratorService:
     def __init__(self, model_name: str = DEFAULT_MODEL_NAME) -> None:
         self.model_name = model_name
@@ -51,6 +79,7 @@ class OrchestratorService:
         self.image_generation_service = ImageGenerationService()
 
     def handle(self, user_request: str) -> dict[str, Any] | list[Any]:
+        # ── 1. Tentative de classification locale (publication) ───────────────
         local_classification = self._try_local_publication_classification(user_request)
         if local_classification is not None:
             try:
@@ -70,6 +99,12 @@ class OrchestratorService:
             except Exception as exc:
                 raise OrchestratorResponseError(str(exc)) from exc
 
+        # ── 2. Tentative de classification locale (vital_agent) ───────────────
+        if self._is_vital_agent_query(user_request):
+            classification = {"intent": "vital_agent", "query": user_request}
+            return self._finalize_response(None, user_request, classification)
+
+        # ── 3. Classification Gemini ──────────────────────────────────────────
         try:
             client = build_client()
         except GeminiClientConfigError as exc:
@@ -128,6 +163,10 @@ class OrchestratorService:
         except Exception as exc:
             raise OrchestratorResponseError(str(exc)) from exc
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # FINALIZE
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _finalize_response(
         self,
         client: Any | None,
@@ -147,11 +186,17 @@ class OrchestratorService:
         )
         return response_payload
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # DISPATCH
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _dispatch(self, parsed_response: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
         if not isinstance(parsed_response, dict):
             return parsed_response
 
         intent = parsed_response.get("intent")
+
+        # ── Rapport ──────────────────────────────────────────────────────────
         if intent == "rapport":
             report_text = parsed_response.get("rapport")
             if not isinstance(report_text, str) or not report_text.strip():
@@ -160,6 +205,7 @@ class OrchestratorService:
                 )
             return self.report_service.handle(report_text).model_dump()
 
+        # ── Publication ───────────────────────────────────────────────────────
         if intent == "publication":
             media_type = str(parsed_response.get("media_type", "")).strip().lower()
             generation_mode = str(parsed_response.get("generation_mode", "")).strip().lower()
@@ -174,7 +220,22 @@ class OrchestratorService:
             if media_type == "video" and generation_mode == "next_occasion":
                 return self.publication_service.handle(parsed_response)
 
+        # ── VitalAgent ────────────────────────────────────────────────────────
+        if intent == "vital_agent":
+            query = parsed_response.get("query", "")
+            if not isinstance(query, str) or not query.strip():
+                raise OrchestratorResponseError(
+                    "La reponse de l'orchestrateur contient intent=vital_agent sans champ 'query' valide."
+                )
+            agent = _get_vital_agent()
+            answer = agent.ask(query.strip())
+            return {"status": "success", "agent_response": answer}
+
         return parsed_response
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # BUILD RESPONSE PAYLOAD
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _build_response_payload(
         self,
@@ -194,6 +255,14 @@ class OrchestratorService:
 
         if intent == "rapport":
             status = "success"
+
+        elif intent == "vital_agent":
+            # Si le dispatching a réussi (agent a répondu), status = success
+            status = "success" if (
+                isinstance(dispatched_result, dict)
+                and dispatched_result.get("status") == "success"
+            ) else "classified_only"
+
         elif intent == "publication" and isinstance(dispatched_result, dict):
             if dispatched_result.get("status") == "success":
                 status = "success"
@@ -204,30 +273,30 @@ class OrchestratorService:
                 if media_type not in {"image", "video"} and generation_mode not in {"", "missing"}:
                     status = "missing_information"
                     choices = ["image", "video"]
-                    missing_fields = ["media_type"]
-                elif media_type not in {"image", "video"} and generation_mode in {"", "missing"}:
-                    status = "missing_information"
-                    choices = ["image", "video"]
-                    missing_fields = ["media_type", "generation_mode"]
-                elif media_type in {"image", "video"} and generation_mode in {"", "missing"}:
+                elif generation_mode in {"", "missing"}:
                     status = "needs_choice"
                     choices = ["next_occasion", "exam_period", "given_occasion"]
-                    missing_fields = ["generation_mode"]
-                elif media_type == "video" and generation_mode in {"exam_period", "given_occasion"}:
-                    status = "classified_only"
                 else:
                     status = "classified_only"
+
         elif intent == "inconnue":
             status = "unsupported_request"
 
-        return {
-            "status": status,
+        payload: dict[str, Any] = {
             "intent": intent,
-            "message": "",
+            "status": status,
             "data": dispatched_result,
-            "choices": choices,
-            "missing_fields": missing_fields,
         }
+        if choices:
+            payload["choices"] = choices
+        if missing_fields:
+            payload["missing_fields"] = missing_fields
+
+        return payload
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # GENERATE EXPLANATORY MESSAGE
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _generate_explanatory_message(
         self,
@@ -235,6 +304,14 @@ class OrchestratorService:
         user_request: str,
         response_payload: dict[str, Any],
     ) -> str:
+        # Pour vital_agent : retourner directement la réponse de l'agent (déjà en langage naturel)
+        if response_payload.get("intent") == "vital_agent":
+            data = response_payload.get("data", {})
+            if isinstance(data, dict) and isinstance(data.get("agent_response"), str):
+                return data["agent_response"]
+            return self._build_fallback_message(response_payload)
+
+        # Pas de client Gemini disponible → fallback
         if client is None:
             return self._build_fallback_message(response_payload)
 
@@ -281,6 +358,10 @@ class OrchestratorService:
 
         return self._build_fallback_message(response_payload)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # FALLBACK MESSAGE
+    # ─────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def _build_fallback_message(response_payload: dict[str, Any]) -> str:
         status = response_payload.get("status")
@@ -289,6 +370,10 @@ class OrchestratorService:
 
         if status == "success" and intent == "rapport":
             return "Le rapport a ete structure avec succes."
+        if status == "success" and intent == "vital_agent":
+            if isinstance(data, dict) and isinstance(data.get("agent_response"), str):
+                return data["agent_response"]
+            return "L'analyse Vital a ete realisee avec succes."
         if status == "success" and intent == "publication" and isinstance(data, dict):
             publication_type = data.get("type_publication", "publication")
             occasion = data.get("occasion")
@@ -321,10 +406,14 @@ class OrchestratorService:
             )
         if status == "unsupported_request":
             return (
-                "Je n'ai pas pu determiner si votre demande concerne une structuration de rapport "
-                "ou une publication."
+                "Je n'ai pas pu determiner si votre demande concerne une structuration de rapport, "
+                "une publication, ou une analyse de produits Vital."
             )
         return "Le traitement a ete realise."
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # HELPERS
+    # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _parse_json(payload: str) -> dict[str, Any] | list[Any]:
@@ -332,6 +421,23 @@ class OrchestratorService:
         if not isinstance(parsed, (dict, list)):
             raise TypeError("La reponse n'est ni un objet JSON ni une liste JSON.")
         return parsed
+
+    @staticmethod
+    def _is_vital_agent_query(user_request: str) -> bool:
+        """
+        Détection locale rapide des requêtes destinées à VitalAgent.
+        Évite un appel Gemini inutile pour les questions évidentes sur les produits.
+        """
+        normalized = OrchestratorService._normalize_text(user_request)
+        vital_keywords = (
+            "produit", "gamme", "stock", "rupture", "opportunite", "risque",
+            "tendance", "momentum", "prix", "promo", "promotion", "concurrent",
+            "vital", "parapharmacie", "complement", "soin", "pediatrie",
+            "therapeutique", "indication", "composition", "analyse produit",
+            "portefeuille", "categorie", "croissance", "declin", "maturite",
+            "lifecycle", "cycle de vie",
+        )
+        return any(kw in normalized for kw in vital_keywords)
 
     @staticmethod
     def _try_local_publication_classification(user_request: str) -> dict[str, Any] | None:
