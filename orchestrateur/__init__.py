@@ -1,5 +1,6 @@
 from .orchestrator_service import (
     OrchestratorConfigError,
+    OrchestratorMissingDataError,
     OrchestratorProcessingError,
     OrchestratorRequestError,
     OrchestratorResponseError,
@@ -8,6 +9,7 @@ from .orchestrator_service import (
 
 __all__ = [
     "OrchestratorConfigError",
+    "OrchestratorMissingDataError",
     "OrchestratorProcessingError",
     "OrchestratorRequestError",
     "OrchestratorResponseError",

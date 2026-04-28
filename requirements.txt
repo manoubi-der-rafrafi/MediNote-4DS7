@@ -6,4 +6,8 @@ pandas
 openpyxl
 Pillow
 numpy
+requests
+scikit-learn
 huggingface_hub
+sqlalchemy
+pymysql

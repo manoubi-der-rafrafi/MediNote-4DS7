@@ -27,6 +27,17 @@ class ImageGenerationPersistenceError(RuntimeError):
     pass
 
 
+IMAGE_REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/135.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+}
+
+
 def download_product_reference(
     output_dir: Path,
     selected_product: dict[str, Any],
@@ -46,7 +57,14 @@ def download_product_reference(
     Image, _, _, _ = _get_pillow_modules()
 
     try:
-        with request.urlopen(image_url, timeout=60) as response:
+        image_request = request.Request(
+            image_url,
+            headers={
+                **IMAGE_REQUEST_HEADERS,
+                "Referer": f"{parsed_url.scheme}://{parsed_url.netloc}/",
+            },
+        )
+        with request.urlopen(image_request, timeout=60) as response:
             payload = response.read()
     except HTTPError as exc:
         raise ImageGenerationRequestError(
@@ -171,9 +189,16 @@ def generate_marketing_image(
     product_image,
     selected_product: dict[str, Any],
     context: dict[str, Any],
+    overlay_text: dict[str, str] | None = None,
 ) -> dict[str, str]:
     background = _build_background(prompt)
-    composed = _compose_final_image(background, product_image, selected_product, context)
+    composed = _compose_final_image(
+        background,
+        product_image,
+        selected_product,
+        context,
+        overlay_text=overlay_text,
+    )
 
     image_path = output_dir / IMAGE_OUTPUT_FILENAME
     try:
@@ -226,11 +251,17 @@ def _remove_white_background(image):
     return Image.fromarray(rgba, mode="RGBA")
 
 
-def _compose_final_image(background, product_image, selected_product: dict[str, Any], context: dict[str, Any]):
+def _compose_final_image(
+    background,
+    product_image,
+    selected_product: dict[str, Any],
+    context: dict[str, Any],
+    overlay_text: dict[str, str] | None = None,
+):
     Image, _, _, _ = _get_pillow_modules()
 
     canvas = background.copy().convert("RGBA")
-    canvas = _soften_center_background(canvas)
+    canvas = _enhance_center_background(canvas)
 
     product = product_image.copy()
     product.thumbnail((360, 360))
@@ -240,24 +271,28 @@ def _compose_final_image(background, product_image, selected_product: dict[str, 
     y = 160
     _draw_product_stage(canvas, x, y, product.size)
     canvas.alpha_composite(product, (x, y))
+    _draw_marketing_text_overlay(canvas, selected_product, context, overlay_text=overlay_text)
 
     return canvas.convert("RGB")
 
 
-def _soften_center_background(background):
+def _enhance_center_background(background):
     Image, ImageDraw, ImageFilter, _ = _get_pillow_modules()
 
-    blurred = background.filter(ImageFilter.GaussianBlur(14))
     mask = Image.new("L", IMAGE_SIZE, 0)
     mask_draw = ImageDraw.Draw(mask)
-    mask_draw.ellipse((250, 90, 774, 642), fill=220)
-    mask = mask.filter(ImageFilter.GaussianBlur(40))
-    base = Image.composite(blurred, background, mask)
+    mask_draw.ellipse((250, 110, 774, 648), fill=210)
+    mask = mask.filter(ImageFilter.GaussianBlur(54))
 
     spotlight = Image.new("RGBA", IMAGE_SIZE, (0, 0, 0, 0))
     spotlight_draw = ImageDraw.Draw(spotlight)
-    spotlight_draw.ellipse((235, 70, 789, 670), fill=(255, 255, 255, 72))
-    spotlight = spotlight.filter(ImageFilter.GaussianBlur(48))
+    spotlight_draw.ellipse((225, 88, 799, 700), fill=(255, 255, 255, 52))
+    spotlight = spotlight.filter(ImageFilter.GaussianBlur(64))
+
+    base = background.copy()
+    lifted_center = Image.new("RGBA", IMAGE_SIZE, (245, 248, 252, 0))
+    lifted_center.putalpha(mask)
+    base.alpha_composite(lifted_center)
     base.alpha_composite(spotlight)
     return base
 
@@ -290,6 +325,169 @@ def _add_soft_product_glow(product):
     composed.alpha_composite(glow_layer)
     composed.alpha_composite(product)
     return composed
+
+
+def _draw_marketing_text_overlay(
+    canvas,
+    selected_product: dict[str, Any],
+    context: dict[str, Any],
+    overlay_text: dict[str, str] | None = None,
+) -> None:
+    _, ImageDraw, _, _ = _get_pillow_modules()
+
+    overlay_copy = _build_overlay_copy(selected_product, context, overlay_text=overlay_text)
+    title = overlay_copy["title"]
+    subtitle = overlay_copy["subtitle"]
+    badge = overlay_copy["badge"]
+
+    title_font = _get_font(58, bold=True)
+    subtitle_font = _get_font(24, bold=False)
+    badge_font = _get_font(22, bold=True)
+
+    measure_layer = ImageDraw.Draw(canvas)
+    max_text_width = IMAGE_SIZE[0] - 180
+    title_lines = _wrap_text(measure_layer, title, title_font, max_text_width)
+    subtitle_lines = (
+        _wrap_text(measure_layer, subtitle, subtitle_font, max_text_width)
+        if subtitle
+        else []
+    )
+
+    draw = ImageDraw.Draw(canvas)
+    text_x = 72
+    text_y = 72
+    subtitle_gap = 14 if subtitle_lines else 0
+
+    if badge:
+        badge_box = measure_layer.textbbox((0, 0), badge, font=badge_font)
+        badge_height = badge_box[3] - badge_box[1]
+        _draw_text_with_shadow(
+            draw,
+            (text_x, text_y),
+            badge,
+            badge_font,
+            fill=(245, 185, 84, 255),
+            shadow=(28, 36, 48, 140),
+        )
+        text_y += badge_height + 18
+
+    _draw_multiline_with_shadow(
+        draw,
+        (text_x, text_y),
+        title_lines,
+        title_font,
+        line_spacing=10,
+        fill=(255, 248, 236, 255),
+        shadow=(28, 36, 48, 150),
+    )
+    text_y += _get_multiline_height(measure_layer, title_lines, title_font, 10) + subtitle_gap
+
+    if subtitle_lines:
+        _draw_multiline_with_shadow(
+            draw,
+            (text_x, text_y),
+            subtitle_lines,
+            subtitle_font,
+            line_spacing=8,
+            fill=(238, 242, 247, 245),
+            shadow=(28, 36, 48, 130),
+        )
+
+
+def _build_overlay_copy(
+    selected_product: dict[str, Any],
+    context: dict[str, Any],
+    overlay_text: dict[str, str] | None = None,
+) -> dict[str, str]:
+    occasion = str(context.get("occasion") or "").strip()
+    occasion_type = str(context.get("occasion_type") or "").strip().lower()
+    normalized_occasion = occasion.lower()
+
+    if occasion_type == "periode_examens":
+        title = "Examens"
+        subtitle = ""
+    elif normalized_occasion == "ramadan":
+        title = "Ramadan"
+        subtitle = ""
+    elif occasion_type == "saison":
+        title = _format_title_case(occasion)
+        subtitle = ""
+    else:
+        title = _format_title_case(occasion or "Vital")
+        subtitle = ""
+
+    computed = {
+        "badge": "VITAL",
+        "title": title,
+        "subtitle": subtitle,
+    }
+    if overlay_text:
+        computed.update(
+            {
+                key: value
+                for key, value in overlay_text.items()
+                if isinstance(value, str) and value.strip()
+            }
+        )
+    return computed
+
+
+def _format_title_case(value: str) -> str:
+    words = [part for part in str(value).replace("_", " ").split() if part]
+    return " ".join(word[:1].upper() + word[1:] for word in words) or "Vital"
+
+
+def _wrap_text(draw, text: str, font, max_width: int) -> list[str]:
+    words = text.split()
+    if not words:
+        return [""]
+
+    lines: list[str] = []
+    current = words[0]
+
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+
+    lines.append(current)
+    return lines
+
+
+def _get_multiline_height(draw, lines: list[str], font, line_spacing: int) -> int:
+    total = 0
+    for index, line in enumerate(lines):
+        bbox = draw.textbbox((0, 0), line, font=font)
+        total += bbox[3] - bbox[1]
+        if index < len(lines) - 1:
+            total += line_spacing
+    return total
+
+
+def _draw_text_with_shadow(draw, position, text: str, font, fill, shadow) -> None:
+    x, y = position
+    draw.text((x + 2, y + 2), text, font=font, fill=shadow)
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def _draw_multiline_with_shadow(
+    draw,
+    position,
+    lines: list[str],
+    font,
+    line_spacing: int,
+    fill,
+    shadow,
+) -> None:
+    x, y = position
+    for line in lines:
+        _draw_text_with_shadow(draw, (x, y), line, font=font, fill=fill, shadow=shadow)
+        bbox = draw.textbbox((0, 0), line, font=font)
+        y += (bbox[3] - bbox[1]) + line_spacing
 
 
 def _slugify(value: str) -> str:

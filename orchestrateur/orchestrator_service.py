@@ -4,6 +4,14 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from conversation import ConversationAccessError, ConversationTaskService
+from gestionBDD import (
+    DatabaseQueryConfigError,
+    DatabaseQueryExecutionError,
+    DatabaseQueryRequestError,
+    DatabaseQueryResponseError,
+    DatabaseQueryService,
+)
 from gestionPublication import (
     ImageGenerationConfigError,
     ImageGenerationContextError,
@@ -17,6 +25,7 @@ from gestionPublication import (
     PublicationResponseError,
     PublicationService,
 )
+from gestionProduit import ProductService, ProductServiceError
 from gestionRapport.structuration import StructurationRapportService
 from .gemini_client import DEFAULT_MODEL_NAME, GeminiClientConfigError, build_client
 from .prompts import (
@@ -39,6 +48,10 @@ class OrchestratorResponseError(RuntimeError):
     pass
 
 
+class OrchestratorMissingDataError(RuntimeError):
+    pass
+
+
 class OrchestratorProcessingError(RuntimeError):
     pass
 
@@ -49,26 +62,46 @@ class OrchestratorService:
         self.report_service = StructurationRapportService()
         self.publication_service = PublicationService()
         self.image_generation_service = ImageGenerationService()
+        self.database_query_service = DatabaseQueryService(model_name=model_name)
+        self.product_service = ProductService()
+        self.conversation_task_service = ConversationTaskService()
 
-    def handle(self, user_request: str) -> dict[str, Any] | list[Any]:
-        local_classification = self._try_local_publication_classification(user_request)
-        if local_classification is not None:
-            try:
-                return self._finalize_response(None, user_request, local_classification)
-            except (
-                ImageGenerationConfigError,
-                ImageGenerationContextError,
-                ImageGenerationPersistenceError,
-                ImageGenerationRequestError,
-                ImageGenerationRequestValidationError,
-                PublicationConfigError,
-                PublicationPersistenceError,
-                PublicationRequestError,
-                PublicationResponseError,
-            ) as exc:
-                raise OrchestratorProcessingError(str(exc)) from exc
-            except Exception as exc:
-                raise OrchestratorResponseError(str(exc)) from exc
+    def handle(
+        self,
+        user_request: str,
+        report_text: str | None = None,
+        user_id: int | None = None,
+        conversation_id: int | None = None,
+    ) -> dict[str, Any] | list[Any]:
+        local_report_deletion = self._try_local_report_deletion_classification(user_request)
+        if local_report_deletion is not None:
+            return self._finalize_response(
+                client=None,
+                user_request=user_request,
+                classification_result=local_report_deletion,
+                report_text=report_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+
+        if self._looks_like_product_management_request(user_request):
+            classification_result = {
+                "intent": "produit",
+                "action": "product_management",
+            }
+            dispatched_result = self.product_service.handle(
+                user_request,
+                classification_result,
+            )
+            response_payload = self._build_response_payload(
+                user_request=user_request,
+                classification_result=classification_result,
+                dispatched_result=dispatched_result,
+            )
+            response_payload["message"] = str(
+                dispatched_result.get("response", "")
+            ).strip()
+            return response_payload
 
         try:
             client = build_client()
@@ -97,23 +130,52 @@ class OrchestratorService:
             parsed = getattr(response, "parsed", None)
             if parsed is not None:
                 if isinstance(parsed, (dict, list)):
-                    return self._finalize_response(client, user_request, parsed)
+                    return self._finalize_response(
+                        client,
+                        user_request,
+                        parsed,
+                        report_text=report_text,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                    )
                 if isinstance(parsed, str):
                     return self._finalize_response(
-                        client, user_request, self._parse_json(parsed)
+                        client,
+                        user_request,
+                        self._parse_json(parsed),
+                        report_text=report_text,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
                     )
                 return self._finalize_response(
-                    client, user_request, self._parse_json(json.dumps(parsed))
+                    client,
+                    user_request,
+                    self._parse_json(json.dumps(parsed)),
+                    report_text=report_text,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
                 )
 
             response_text = getattr(response, "text", "")
             parsed_response = self._parse_json(response_text)
-            return self._finalize_response(client, user_request, parsed_response)
+            return self._finalize_response(
+                client,
+                user_request,
+                parsed_response,
+                report_text=report_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
         except (json.JSONDecodeError, TypeError, ValidationError) as exc:
             raise OrchestratorResponseError(
                 "La reponse Gemini de l'orchestrateur n'est pas un JSON valide."
             ) from exc
         except (
+            ConversationAccessError,
+            DatabaseQueryConfigError,
+            DatabaseQueryExecutionError,
+            DatabaseQueryRequestError,
+            DatabaseQueryResponseError,
             ImageGenerationConfigError,
             ImageGenerationContextError,
             ImageGenerationPersistenceError,
@@ -123,8 +185,19 @@ class OrchestratorService:
             PublicationPersistenceError,
             PublicationRequestError,
             PublicationResponseError,
+            ProductServiceError,
         ) as exc:
+            if isinstance(exc, ConversationAccessError):
+                raise OrchestratorProcessingError(str(exc)) from exc
+            if isinstance(exc, DatabaseQueryConfigError):
+                raise OrchestratorConfigError(str(exc)) from exc
+            if isinstance(exc, DatabaseQueryRequestError):
+                raise OrchestratorRequestError(str(exc)) from exc
+            if isinstance(exc, DatabaseQueryResponseError):
+                raise OrchestratorResponseError(str(exc)) from exc
             raise OrchestratorProcessingError(str(exc)) from exc
+        except OrchestratorMissingDataError:
+            raise
         except Exception as exc:
             raise OrchestratorResponseError(str(exc)) from exc
 
@@ -133,8 +206,32 @@ class OrchestratorService:
         client: Any | None,
         user_request: str,
         classification_result: dict[str, Any] | list[Any],
+        report_text: str | None = None,
+        user_id: int | None = None,
+        conversation_id: int | None = None,
     ) -> dict[str, Any]:
-        dispatched_result = self._dispatch(classification_result)
+        if (
+            user_id is not None
+            and conversation_id is not None
+            and isinstance(classification_result, dict)
+            and self.conversation_task_service.is_managed(classification_result)
+        ):
+            return self._finalize_conversation_task_response(
+                client=client,
+                user_request=user_request,
+                classification_result=classification_result,
+                report_text=report_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+
+        dispatched_result = self._dispatch(
+            classification_result,
+            user_request=user_request,
+            explicit_report_text=report_text,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         response_payload = self._build_response_payload(
             user_request=user_request,
             classification_result=classification_result,
@@ -147,18 +244,117 @@ class OrchestratorService:
         )
         return response_payload
 
-    def _dispatch(self, parsed_response: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def _finalize_conversation_task_response(
+        self,
+        client: Any | None,
+        user_request: str,
+        classification_result: dict[str, Any],
+        report_text: str | None,
+        user_id: int,
+        conversation_id: int,
+    ) -> dict[str, Any]:
+        if (
+            classification_result.get("intent") == "rapport"
+            and self._infer_action(classification_result) == "structure_report"
+            and report_text
+        ):
+            classification_result = dict(classification_result)
+            classification_result["rapport"] = report_text
+
+        merge_result = self.conversation_task_service.merge_task(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            classification=classification_result,
+        )
+
+        if not merge_result.is_complete:
+            response_payload = {
+                "status": self._status_for_incomplete_task(merge_result.classification),
+                "intent": merge_result.classification.get("intent"),
+                "action": self._infer_action(merge_result.classification),
+                "message": "",
+                "data": None,
+                "choices": merge_result.choices,
+                "missing_fields": merge_result.missing_fields,
+                "task": merge_result.task,
+            }
+            response_payload["message"] = self._generate_explanatory_message(
+                client=client,
+                user_request=user_request,
+                response_payload=response_payload,
+            )
+            return response_payload
+
+        try:
+            dispatched_result = self._dispatch(
+                merge_result.classification,
+                user_request=user_request,
+                explicit_report_text=report_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+        except Exception:
+            self.conversation_task_service.mark_failed(int(merge_result.task["id"]))
+            raise
+
+        completed_task = self.conversation_task_service.mark_completed(
+            int(merge_result.task["id"])
+        )
+        response_payload = self._build_response_payload(
+            user_request=user_request,
+            classification_result=merge_result.classification,
+            dispatched_result=dispatched_result,
+        )
+        response_payload["task"] = completed_task
+        response_payload["message"] = self._generate_explanatory_message(
+            client=client,
+            user_request=user_request,
+            response_payload=response_payload,
+        )
+        return response_payload
+
+    def _dispatch(
+        self,
+        parsed_response: dict[str, Any] | list[Any],
+        user_request: str,
+        explicit_report_text: str | None = None,
+        user_id: int | None = None,
+        conversation_id: int | None = None,
+    ) -> dict[str, Any] | list[Any]:
         if not isinstance(parsed_response, dict):
             return parsed_response
 
         intent = parsed_response.get("intent")
+        action = self._infer_action(parsed_response)
+        if action == "query_database":
+            return self.database_query_service.handle(
+                user_request,
+                parsed_response,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+
+        if intent == "produit":
+            return self.product_service.handle(user_request, parsed_response)
+
         if intent == "rapport":
-            report_text = parsed_response.get("rapport")
-            if not isinstance(report_text, str) or not report_text.strip():
-                raise OrchestratorResponseError(
-                    "La reponse de l'orchestrateur contient intent=rapport sans champ 'rapport' valide."
-                )
-            return self.report_service.handle(report_text).model_dump()
+            if action == "delete_report":
+                report_id = parsed_response.get("report_id")
+                if report_id is None:
+                    return {
+                        "status": "missing_information",
+                        "missing_fields": ["report_id"],
+                        "choices": [],
+                        "reason": "L'id du rapport a supprimer est requis.",
+                    }
+                return self.report_service.delete_report(int(report_id))
+
+            resolved_report_text = self._resolve_report_text(
+                user_request=user_request,
+                parsed_response=parsed_response,
+                explicit_report_text=explicit_report_text,
+            )
+            return self.report_service.handle(resolved_report_text).model_dump()
 
         if intent == "publication":
             media_type = str(parsed_response.get("media_type", "")).strip().lower()
@@ -187,12 +383,36 @@ class OrchestratorService:
             if isinstance(classification_result, dict)
             else "inconnue"
         )
+        action = (
+            self._infer_action(classification_result)
+            if isinstance(classification_result, dict)
+            else ""
+        )
 
         status = "classified_only"
         choices: list[str] = []
         missing_fields: list[str] = []
+        data = dispatched_result
 
-        if intent == "rapport":
+        if action == "query_database" and isinstance(dispatched_result, dict):
+            status = str(dispatched_result.get("status", "classified_only")).strip() or "classified_only"
+            choices = list(dispatched_result.get("choices", []))
+            missing_fields = list(dispatched_result.get("missing_fields", []))
+            data = {
+                key: value
+                for key, value in dispatched_result.items()
+                if key not in {"status", "choices", "missing_fields"}
+            }
+        elif action == "delete_report" and isinstance(dispatched_result, dict):
+            status = str(dispatched_result.get("status", "classified_only")).strip() or "classified_only"
+            choices = list(dispatched_result.get("choices", []))
+            missing_fields = list(dispatched_result.get("missing_fields", []))
+            data = {
+                key: value
+                for key, value in dispatched_result.items()
+                if key not in {"status", "choices", "missing_fields"}
+            }
+        elif intent == "rapport":
             status = "success"
         elif intent == "publication" and isinstance(dispatched_result, dict):
             if dispatched_result.get("status") == "success":
@@ -217,17 +437,38 @@ class OrchestratorService:
                     status = "classified_only"
                 else:
                     status = "classified_only"
+        elif intent == "produit" and isinstance(dispatched_result, dict):
+            status = str(dispatched_result.get("status", "success")).strip() or "success"
+            data = dispatched_result
+        elif intent == "conversation" and action == "query_database" and isinstance(dispatched_result, dict):
+            status = str(dispatched_result.get("status", "classified_only")).strip() or "classified_only"
+            choices = list(dispatched_result.get("choices", []))
+            missing_fields = list(dispatched_result.get("missing_fields", []))
+            data = {
+                key: value
+                for key, value in dispatched_result.items()
+                if key not in {"status", "choices", "missing_fields"}
+            }
         elif intent == "inconnue":
             status = "unsupported_request"
 
         return {
             "status": status,
             "intent": intent,
+            "action": action,
             "message": "",
-            "data": dispatched_result,
+            "data": data,
             "choices": choices,
             "missing_fields": missing_fields,
         }
+
+    @staticmethod
+    def _status_for_incomplete_task(classification_result: dict[str, Any]) -> str:
+        intent = str(classification_result.get("intent", "")).strip().lower()
+        action = OrchestratorService._infer_action(classification_result)
+        if intent == "publication" and action in {"generate_publication", "query_database"}:
+            return "needs_choice"
+        return "missing_information"
 
     def _generate_explanatory_message(
         self,
@@ -235,11 +476,28 @@ class OrchestratorService:
         user_request: str,
         response_payload: dict[str, Any],
     ) -> str:
-        if client is None:
-            return self._build_fallback_message(response_payload)
+        if response_payload.get("intent") == "produit":
+            data = response_payload.get("data")
+            if isinstance(data, dict):
+                response_text = data.get("response")
+                if isinstance(response_text, str) and response_text.strip():
+                    return response_text.strip()
+
+        explanation_client = client
+        if explanation_client is None:
+            try:
+                explanation_client = build_client()
+            except GeminiClientConfigError:
+                explanation_client = None
+
+        if explanation_client is None:
+            return self._build_fallback_message(
+                response_payload,
+                language=self._detect_response_language(user_request),
+            )
 
         try:
-            response = client.models.generate_content(
+            response = explanation_client.models.generate_content(
                 model=self.model_name,
                 contents=[
                     {
@@ -253,6 +511,7 @@ class OrchestratorService:
                                 "text": build_orchestrator_explanation_user_prompt(
                                     user_request,
                                     response_payload,
+                                    response_language=self._build_response_language_instruction(),
                                 )
                             }
                         ],
@@ -279,31 +538,113 @@ class OrchestratorService:
         except Exception:
             pass
 
-        return self._build_fallback_message(response_payload)
+        return self._build_fallback_message(
+            response_payload,
+            language=self._detect_response_language(user_request),
+        )
 
     @staticmethod
-    def _build_fallback_message(response_payload: dict[str, Any]) -> str:
+    def _build_fallback_message(
+        response_payload: dict[str, Any],
+        language: str | None = None,
+    ) -> str:
         status = response_payload.get("status")
         intent = response_payload.get("intent")
+        action = response_payload.get("action")
         data = response_payload.get("data")
+        is_english = language == "English"
 
+        if status == "success" and action == "query_database":
+            return OrchestratorService._build_query_database_fallback_message(
+                data,
+                language=language,
+            )
+        if status == "success" and action == "delete_report" and isinstance(data, dict):
+            report_id = data.get("report_id")
+            if is_english:
+                return f"The report with id {report_id} was deleted successfully."
+            return f"Le rapport avec l'id {report_id} a ete supprime avec succes."
         if status == "success" and intent == "rapport":
+            if is_english:
+                return "The report was structured successfully."
             return "Le rapport a ete structure avec succes."
+        if status == "not_found" and action == "delete_report" and isinstance(data, dict):
+            report_id = data.get("report_id")
+            if is_english:
+                return f"No report was found with id {report_id}."
+            return f"Aucun rapport n'a ete trouve avec l'id {report_id}."
         if status == "success" and intent == "publication" and isinstance(data, dict):
             publication_type = data.get("type_publication", "publication")
             occasion = data.get("occasion")
+            if is_english:
+                if occasion:
+                    return (
+                        f"The {publication_type} publication was generated successfully "
+                        f"for {occasion}."
+                    )
+                return f"The {publication_type} publication was generated successfully."
             if occasion:
                 return (
                     f"La publication {publication_type} a ete generee avec succes "
                     f"pour l'occasion {occasion}."
                 )
             return f"La publication {publication_type} a ete generee avec succes."
+        if status == "success" and intent == "produit" and isinstance(data, dict):
+            response_text = data.get("response")
+            if isinstance(response_text, str) and response_text.strip():
+                return response_text.strip()
+            if is_english:
+                return "The product analysis was completed successfully."
+            return "L'analyse produit a ete realisee avec succes."
         if status == "needs_choice":
+            if action == "query_database" and intent == "publication":
+                return (
+                    "Votre demande concerne la base des publications. "
+                    "Precisez si vous voulez interroger les images, les videos, ou les deux."
+                )
             return (
                 "Votre demande concerne une publication, mais il manque le contexte. "
                 "Precisez s'il faut viser la prochaine occasion, la periode d'examens, ou une occasion donnee."
             )
+        if status == "query_rejected" and isinstance(data, dict):
+            reason = str(data.get("reason", "")).strip()
+            if reason:
+                if is_english:
+                    return f"The database query was rejected: {reason}"
+                return f"La requete BDD a ete refusee: {reason}"
+            if is_english:
+                return "The database query could not be executed safely."
+            return "La requete BDD n'a pas pu etre executee de maniere sure."
+        if status == "database_unavailable":
+            reason = ""
+            details = ""
+            if isinstance(data, dict):
+                reason = str(data.get("reason", "")).strip()
+                details = str(data.get("details", "")).strip()
+            if reason:
+                return reason
+            if details:
+                if is_english:
+                    return f"SQL execution failed: {details}"
+                return f"Echec d'execution SQL: {details}"
+            if is_english:
+                return (
+                    "The database is not accessible. Check that the database server "
+                    "is running and that the connection configuration is correct."
+                )
+            return (
+                "La base de donnees n'est pas accessible. Verifiez que le serveur "
+                "BDD est demarre et que la configuration de connexion est correcte."
+            )
         if status == "missing_information":
+            if action == "delete_report":
+                if is_english:
+                    return "The report id to delete is required."
+                return "L'id du rapport a supprimer est requis."
+            if is_english:
+                return (
+                    "The request was understood, but more information is needed before continuing."
+                )
             return (
                 "Votre demande a ete comprise, mais il manque des informations avant de continuer."
             )
@@ -320,11 +661,240 @@ class OrchestratorService:
                 "n'a ete lance pour ce cas."
             )
         if status == "unsupported_request":
+            if is_english:
+                return (
+                    "I could not determine whether your request is about report structuring "
+                    "or publication generation."
+                )
             return (
                 "Je n'ai pas pu determiner si votre demande concerne une structuration de rapport "
                 "ou une publication."
             )
+        if is_english:
+            return "The processing was completed."
         return "Le traitement a ete realise."
+
+    @staticmethod
+    def _build_query_database_fallback_message(
+        data: Any,
+        language: str | None = None,
+    ) -> str:
+        is_english = language == "English"
+        if not isinstance(data, dict):
+            if is_english:
+                return "The database query was executed successfully."
+            return "La requete sur la base de donnees a ete executee avec succes."
+
+        row_count = data.get("row_count")
+        if row_count == 0:
+            if is_english:
+                return "No result was found in the database."
+            return "Aucun resultat n'a ete trouve dans la base de donnees."
+
+        rows = data.get("rows")
+        if not isinstance(row_count, int):
+            if is_english:
+                return "The database query was executed successfully."
+            return "La requete sur la base de donnees a ete executee avec succes."
+
+        if not isinstance(rows, list) or not rows:
+            if is_english:
+                return f"I found {row_count} result(s) in the database."
+            return f"J'ai trouve {row_count} resultat(s) dans la base de donnees."
+
+        displayed_rows = rows[:5]
+        rendered_rows = [
+            OrchestratorService._render_row_for_message(row)
+            for row in displayed_rows
+            if isinstance(row, dict)
+        ]
+        rendered_rows = [row for row in rendered_rows if row]
+        if not rendered_rows:
+            if is_english:
+                return f"I found {row_count} result(s) in the database."
+            return f"J'ai trouve {row_count} resultat(s) dans la base de donnees."
+
+        intro = (
+            f"I found {row_count} result(s) in the database:"
+            if is_english
+            else f"J'ai trouve {row_count} resultat(s) dans la base de donnees :"
+        )
+        body = "\n".join(f"- {row}" for row in rendered_rows)
+        if bool(data.get("truncated", False)) or row_count > len(displayed_rows):
+            if is_english:
+                return f"{intro}\n{body}\n- ... other results not displayed"
+            return f"{intro}\n{body}\n- ... autres resultats non affiches"
+        return f"{intro}\n{body}"
+
+    @staticmethod
+    def _render_row_for_message(row: dict[str, Any]) -> str:
+        preferred_keys = (
+            "id",
+            "text_corrige",
+            "mouvement",
+            "potentiel",
+            "conseil",
+            "occasion",
+            "generation_mode",
+            "produit",
+            "description_post",
+            "date_publication",
+            "created_at",
+        )
+
+        parts: list[str] = []
+        used_keys: set[str] = set()
+        for key in preferred_keys:
+            value = row.get(key)
+            if value in (None, "", [], {}):
+                continue
+            rendered_value = str(value).strip()
+            if not rendered_value:
+                continue
+            parts.append(f"{key}={rendered_value}")
+            used_keys.add(key)
+            if len(parts) >= 4:
+                break
+
+        if not parts:
+            for key, value in row.items():
+                if key in used_keys or value in (None, "", [], {}):
+                    continue
+                rendered_value = str(value).strip()
+                if not rendered_value:
+                    continue
+                parts.append(f"{key}={rendered_value}")
+                if len(parts) >= 4:
+                    break
+
+        return ", ".join(parts)
+
+    @classmethod
+    def _resolve_report_text(
+        cls,
+        user_request: str,
+        parsed_response: dict[str, Any],
+        explicit_report_text: str | None = None,
+    ) -> str:
+        if isinstance(explicit_report_text, str) and explicit_report_text.strip():
+            return explicit_report_text.strip()
+
+        inline_report_text = cls._extract_inline_report_text(user_request)
+        if inline_report_text:
+            return inline_report_text
+
+        report_text = parsed_response.get("rapport")
+        if isinstance(report_text, str) and report_text.strip():
+            cleaned_report_text = report_text.strip()
+            if not cls._looks_like_report_request_without_content(
+                user_request=user_request,
+                report_text=cleaned_report_text,
+            ):
+                return cleaned_report_text
+
+        raise OrchestratorMissingDataError(
+            "Des donnees sont manquantes: le texte du rapport n'a pas ete fourni."
+        )
+
+    @classmethod
+    def _extract_inline_report_text(cls, user_request: str) -> str | None:
+        request_text = str(user_request).strip()
+        if not request_text:
+            return None
+
+        normalized_request = cls._normalize_text(request_text)
+        if "rapport" not in normalized_request:
+            return None
+
+        for separator in ("\n\n", "\r\n\r\n", "\n", "\r\n", ":"):
+            if separator not in request_text:
+                continue
+            suffix = request_text.split(separator, 1)[1].strip()
+            if cls._is_report_content_candidate(suffix):
+                return suffix
+
+        trailing_fragment_match = re.search(
+            r"\brapport\b[\s:,-]*(.+)$",
+            request_text,
+            flags=re.IGNORECASE,
+        )
+        if trailing_fragment_match:
+            suffix = trailing_fragment_match.group(1).strip()
+            if cls._is_report_content_candidate(suffix):
+                return suffix
+
+        return None
+
+    @classmethod
+    def _looks_like_report_request_without_content(
+        cls,
+        user_request: str,
+        report_text: str,
+    ) -> bool:
+        normalized_request = cls._normalize_text(user_request)
+        normalized_report = cls._normalize_text(report_text)
+
+        if normalized_report != normalized_request:
+            return False
+
+        has_action = re.search(
+            r"\b(structurer|structure|analyser|analyse|corriger|corrige|traiter|traite|resumer|resume)\b",
+            normalized_request,
+        )
+        has_report_reference = re.search(
+            r"\b(ce|mon|le|du)\s+rapport\b|\brapport\b",
+            normalized_request,
+        )
+        return bool(has_action and has_report_reference)
+
+    @classmethod
+    def _is_report_content_candidate(cls, value: str) -> bool:
+        candidate = str(value).strip()
+        if len(candidate) < 8:
+            return False
+
+        normalized_candidate = cls._normalize_text(candidate)
+        request_patterns = (
+            r"^\b(peux[- ]?tu|pouvez[- ]?vous|merci de|stp|svp)\b",
+            r"\b(structurer|structure|analyser|analyse|corriger|corrige|traiter|traite|resumer|resume)\b",
+        )
+        if any(re.search(pattern, normalized_candidate) for pattern in request_patterns):
+            return False
+
+        report_field_keywords = (
+            "mouvement",
+            "potentiel",
+            "potential",
+            "conseil",
+            "advice",
+            "emplacement",
+            "location",
+            "proximite",
+            "proximity",
+            "personnel",
+            "staff",
+            "attitude",
+            "stock",
+            "invitation",
+            "mise en place",
+            "mise_en_place",
+            "animation",
+            "pharmacie",
+            "pharmacy",
+            "point fort",
+            "strength",
+            "welcome",
+            "reception",
+        )
+        if any(keyword in normalized_candidate for keyword in report_field_keywords):
+            return True
+
+        return bool(
+            re.search(
+                r"\b(est|sont|is|are|very|tres|fort|forte|strong|weak|faible|moyen|moyenne|medium|low|high)\b",
+                normalized_candidate,
+            )
+        )
 
     @staticmethod
     def _parse_json(payload: str) -> dict[str, Any] | list[Any]:
@@ -332,6 +902,249 @@ class OrchestratorService:
         if not isinstance(parsed, (dict, list)):
             raise TypeError("La reponse n'est ni un objet JSON ni une liste JSON.")
         return parsed
+
+    @staticmethod
+    def _try_local_product_classification(user_request: str) -> dict[str, Any] | None:
+        normalized = OrchestratorService._normalize_text(user_request)
+        if not normalized:
+            return None
+
+        if any(keyword in normalized for keyword in ("rapport", "report", "publication", "post", "image", "video")):
+            return None
+
+        action_keywords: tuple[tuple[str, tuple[str, ...]], ...] = (
+            (
+                "stock",
+                (
+                    "rupture",
+                    "stock",
+                    "disponib",
+                    "indisponible",
+                    "approvisionnement",
+                    "manque",
+                    "out of stock",
+                    "reapprovisionnement",
+                ),
+            ),
+            (
+                "clinical",
+                (
+                    "indication",
+                    "composition",
+                    "ingredient",
+                    "actif",
+                    "forme",
+                    "comprime",
+                    "gelule",
+                    "therapeutique",
+                    "posologie",
+                    "contre-indication",
+                ),
+            ),
+            (
+                "commercial",
+                (
+                    "prix",
+                    "promo",
+                    "remise",
+                    "tarif",
+                    "cout",
+                    "budget",
+                    "discount",
+                    "promotion",
+                    "competitif",
+                    "positionnement prix",
+                    "marge",
+                ),
+            ),
+            (
+                "product_profile",
+                (
+                    "profil",
+                    "fiche",
+                    "analyse",
+                    "detail",
+                    "ce produit",
+                    "parle-moi de",
+                    "dis-moi",
+                    "approfondis",
+                    "zoom sur",
+                    "focus sur",
+                ),
+            ),
+            (
+                "gamme",
+                (
+                    "gamme",
+                    "ligne",
+                    "famille",
+                    "portfolio",
+                    "collection",
+                    "range",
+                ),
+            ),
+            (
+                "risk",
+                (
+                    "risque",
+                    "danger",
+                    "alerte",
+                    "menace",
+                    "surveiller",
+                    "declin",
+                    "decline",
+                    "probleme",
+                    "faiblesse",
+                    "vulnerable",
+                    "critique",
+                    "substitution",
+                    "concurrent fort",
+                    "perte",
+                ),
+            ),
+            (
+                "opportunity",
+                (
+                    "opportunite",
+                    "opportunites",
+                    "opportuniter",
+                    "meilleur",
+                    "meilleure",
+                    "potentiel",
+                    "top",
+                    "performer",
+                    "a investir",
+                    "developper",
+                    "locomotive",
+                    "fort momentum",
+                    "investissement",
+                    "prioriser",
+                    "priorite",
+                    "croissance forte",
+                    "dynamique forte",
+                    "best",
+                    "opportunity",
+                    "opportunities",
+                    "potential",
+                    "top performer",
+                ),
+            ),
+            (
+                "momentum",
+                (
+                    "momentum",
+                    "velocite",
+                    "acceleration",
+                    "moteur",
+                    "locomotive",
+                    "vitesse",
+                ),
+            ),
+            (
+                "trend",
+                (
+                    "tendance",
+                    "trend",
+                    "croissance",
+                    "marche",
+                    "dynamique",
+                    "evolution",
+                    "secteur",
+                    "categorie",
+                    "emergent",
+                ),
+            ),
+            (
+                "comparison",
+                (
+                    "compare",
+                    "comparaison",
+                    "versus",
+                    " vs ",
+                    "difference entre",
+                    "lequel est",
+                    "meilleur entre",
+                ),
+            ),
+        )
+
+        for action, keywords in action_keywords:
+            if any(keyword in normalized for keyword in keywords):
+                return {
+                    "intent": "produit",
+                    "action": action,
+                    "user_question": user_request.strip(),
+                }
+
+        product_markers = ("produit", "produits", "product", "products", "catalogue", "portefeuille")
+        if any(keyword in normalized for keyword in product_markers):
+            return {
+                "intent": "produit",
+                "action": "strategic",
+                "user_question": user_request.strip(),
+            }
+
+        return None
+
+    @staticmethod
+    def _try_local_conversation_database_classification(user_request: str) -> dict[str, Any] | None:
+        normalized = OrchestratorService._normalize_text(user_request)
+        conversation_keywords = (
+            "discussion",
+            "discussions",
+            "conversation",
+            "conversations",
+            "message",
+            "messages",
+            "tache",
+            "taches",
+            "task",
+            "tasks",
+        )
+        query_keywords = (
+            "combien",
+            "liste",
+            "lister",
+            "quels",
+            "quelles",
+            "montre",
+            "affiche",
+            "donne",
+            "historique",
+            "dernier",
+            "derniere",
+            "mes",
+            "my",
+            "show",
+            "list",
+            "count",
+            "how many",
+        )
+        if not any(keyword in normalized for keyword in conversation_keywords):
+            return None
+        if not any(keyword in normalized for keyword in query_keywords):
+            return None
+
+        has_messages = "message" in normalized or "messages" in normalized
+        has_tasks = any(keyword in normalized for keyword in ("tache", "taches", "task", "tasks"))
+        has_conversations = any(keyword in normalized for keyword in ("discussion", "discussions", "conversation", "conversations"))
+
+        if has_messages and has_tasks:
+            scope = "all"
+        elif has_messages:
+            scope = "messages"
+        elif has_tasks:
+            scope = "tasks"
+        else:
+            scope = "conversations"
+
+        return {
+            "intent": "conversation",
+            "action": "query_database",
+            "conversation_scope": scope,
+            "user_question": user_request.strip(),
+            "query_kind": OrchestratorService._infer_query_kind(normalized),
+        }
 
     @staticmethod
     def _try_local_publication_classification(user_request: str) -> dict[str, Any] | None:
@@ -351,6 +1164,25 @@ class OrchestratorService:
         )
         if not any(keyword in normalized for keyword in publication_keywords):
             return None
+
+        if OrchestratorService._looks_like_publication_database_query(normalized):
+            media_scope = OrchestratorService._resolve_publication_media_scope(normalized)
+            db_scope_tables: list[str] = []
+            if media_scope == "image":
+                db_scope_tables = ["generated_images"]
+            elif media_scope == "video":
+                db_scope_tables = ["generated_videos"]
+            elif media_scope == "both":
+                db_scope_tables = ["generated_images", "generated_videos"]
+
+            return {
+                "intent": "publication",
+                "action": "query_database",
+                "media_scope": media_scope,
+                "db_scope": {"tables": db_scope_tables},
+                "user_question": user_request.strip(),
+                "query_kind": OrchestratorService._infer_query_kind(normalized),
+            }
 
         media_type = "non_precise"
         if any(keyword in normalized for keyword in ("image", "photo", "visuel", "affiche")):
@@ -381,11 +1213,338 @@ class OrchestratorService:
 
         return {
             "intent": "publication",
+            "action": "generate_publication",
             "media_type": media_type,
             "generation_mode": generation_mode,
             "occasion": occasion if generation_mode == "given_occasion" else None,
             "date": None,
         }
+
+    @staticmethod
+    def _try_local_report_classification(user_request: str) -> dict[str, Any] | None:
+        normalized = OrchestratorService._normalize_text(user_request)
+        if "rapport" not in normalized and "report" not in normalized:
+            return None
+
+        publication_keywords = (
+            "image",
+            "photo",
+            "visuel",
+            "publication",
+            "post",
+            "affiche",
+            "video",
+            "vdo",
+            "reel",
+            "rÃ©el",
+        )
+        if any(keyword in normalized for keyword in publication_keywords):
+            return None
+
+        if OrchestratorService._looks_like_report_creation_request(normalized):
+            return {
+                "intent": "rapport",
+                "action": "structure_report",
+                "rapport": OrchestratorService._extract_inline_report_text(user_request),
+            }
+
+        if OrchestratorService._looks_like_report_database_query(normalized):
+            return {
+                "intent": "rapport",
+                "action": "query_database",
+                "db_scope": {"tables": ["structured_reports"]},
+                "user_question": user_request.strip(),
+                "query_kind": OrchestratorService._infer_query_kind(normalized),
+            }
+
+        has_report_action = re.search(
+            r"\b(structurer|structure|analyser|analyse|corriger|corrige|traiter|traite|resumer|resume)\b",
+            normalized,
+        )
+        if not has_report_action:
+            return None
+
+        return {
+            "intent": "rapport",
+            "action": "structure_report",
+            "rapport": None,
+        }
+
+    @staticmethod
+    def _try_local_report_deletion_classification(user_request: str) -> dict[str, Any] | None:
+        normalized = OrchestratorService._normalize_text(user_request)
+        if "rapport" not in normalized and "report" not in normalized:
+            return None
+
+        has_delete_action = bool(
+            re.search(
+                r"\b(delete|remove|supprimer|supprime|supprimez|effacer|efface|effacez)\b",
+                normalized,
+            )
+        )
+        if not has_delete_action:
+            return None
+
+        report_id = OrchestratorService._extract_report_identifier(user_request)
+        return {
+            "intent": "rapport",
+            "action": "delete_report",
+            "report_id": report_id,
+        }
+
+    @staticmethod
+    def _extract_report_identifier(user_request: str) -> int | None:
+        request_text = str(user_request).strip()
+        if not request_text:
+            return None
+
+        patterns = (
+            r"\b(?:id|identifiant)\s*(?:=|:)?\s*(\d+)\b",
+            r"\brapport\s+(?:numero|n°|num(?:ero)?|#)?\s*(\d+)\b",
+            r"\breport\s+(?:number|#)?\s*(\d+)\b",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, request_text, flags=re.IGNORECASE)
+            if match:
+                try:
+                    return int(match.group(1))
+                except (TypeError, ValueError):
+                    return None
+
+        return None
+
+    @staticmethod
+    def _looks_like_report_creation_request(normalized: str) -> bool:
+        has_report = "rapport" in normalized or "report" in normalized
+        has_write_action = bool(
+            re.search(
+                r"\b(add|save|insert|create|store|record|ajoute|ajouter|enregistre|enregistrer|sauvegarde|sauvegarder)\b",
+                normalized,
+            )
+        )
+        if not has_report or not has_write_action:
+            return False
+
+        return ":" in normalized or bool(
+            re.search(
+                r"\b(is|are|est|sont|weak|strong|medium|low|high|faible|fort|forte|moyen|moyenne)\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _infer_action(classification_result: dict[str, Any]) -> str:
+        action = str(classification_result.get("action", "")).strip().lower()
+        if action:
+            return action
+
+        if classification_result.get("db_scope"):
+            return "query_database"
+        if "media_scope" in classification_result and "generation_mode" not in classification_result:
+            return "query_database"
+
+        intent = str(classification_result.get("intent", "")).strip().lower()
+        if intent == "rapport":
+            return "structure_report"
+        if intent == "publication":
+            return "generate_publication"
+        if intent == "produit":
+            return "product_query"
+        return ""
+
+    @staticmethod
+    def _looks_like_product_management_request(user_request: str) -> bool:
+        normalized = user_request.strip().lower()
+        patterns = (
+            "product manager",
+            "product management",
+            "gestion de produit",
+            "gestion produit",
+            "roadmap",
+            "mvp",
+            "backlog",
+            "user stories",
+            "user story",
+        )
+        return any(pattern in normalized for pattern in patterns)
+
+    @staticmethod
+    def _looks_like_report_database_query(normalized: str) -> bool:
+        explicit_db_keywords = (
+            "bdd",
+            "base de donnees",
+            "base de donnee",
+            "database",
+            "sql",
+            "table structured_reports",
+        )
+        if any(keyword in normalized for keyword in explicit_db_keywords):
+            return True
+
+        if re.search(
+            r"\b(give|list|show|get|display|fetch)\b.*\b(all|existing|exist|reports?|rapports?)\b",
+            normalized,
+        ):
+            return True
+
+        if re.search(
+            r"\b(all|existing|exist)\b.*\b(reports?|rapports?)\b",
+            normalized,
+        ):
+            return True
+
+        if re.search(
+            r"\b(i\s+want|want|give|show|list|je\s+veux|veux|donne|montre|affiche)\b.*\b(reports?|rapports?)\b",
+            normalized,
+        ):
+            return True
+
+        return bool(
+            re.search(
+                r"\b(combien|liste|lister|quels|quelles|montre|affiche|donne)\b.*\brapports?\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_publication_database_query(normalized: str) -> bool:
+        explicit_db_keywords = (
+            "bdd",
+            "base de donnees",
+            "base de donnee",
+            "database",
+            "sql",
+            "table generated_images",
+            "table generated_videos",
+        )
+        if any(keyword in normalized for keyword in explicit_db_keywords):
+            return True
+
+        return bool(
+            re.search(
+                r"\b(combien|liste|lister|quels|quelles|montre|affiche|donne)\b.*\b(images?|videos?|vdo|publications?)\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _resolve_publication_media_scope(normalized: str) -> str:
+        has_image = any(keyword in normalized for keyword in ("image", "images", "photo", "photos", "visuel", "visuels"))
+        has_video = any(keyword in normalized for keyword in ("video", "videos", "vdo", "reel"))
+        if has_image and has_video:
+            return "both"
+        if has_image:
+            return "image"
+        if has_video:
+            return "video"
+        return "missing"
+
+    @staticmethod
+    def _infer_query_kind(normalized: str) -> str:
+        analytics_keywords = (
+            "combien",
+            "total",
+            "nombre",
+            "statistique",
+            "statistiques",
+            "repartition",
+            "repartition",
+            "groupe",
+            "groupes",
+            "moyenne",
+            "pourcentage",
+            "compare",
+            "comparaison",
+            "how many",
+            "count",
+            "number",
+            "statistics",
+            "stats",
+            "average",
+            "percentage",
+            "comparison",
+        )
+        if any(keyword in normalized for keyword in analytics_keywords):
+            return "analytics"
+        return "listing"
+
+    @staticmethod
+    def _detect_response_language(user_request: str) -> str:
+        normalized = OrchestratorService._normalize_text(user_request)
+        english_markers = (
+            "give",
+            "i",
+            "want",
+            "show",
+            "list",
+            "add",
+            "save",
+            "insert",
+            "store",
+            "all",
+            "existing",
+            "exist",
+            "this",
+            "report",
+            "reports",
+            "product",
+            "products",
+            "image",
+            "video",
+            "generate",
+            "create",
+            "what",
+            "which",
+            "how",
+            "many",
+            "with",
+            "database",
+            "potential",
+            "weak",
+            "strong",
+            "medium",
+            "low",
+            "high",
+        )
+        french_markers = (
+            "donne",
+            "liste",
+            "lister",
+            "montre",
+            "affiche",
+            "tous",
+            "existant",
+            "existants",
+            "rapport",
+            "rapports",
+            "produit",
+            "produits",
+            "image",
+            "video",
+            "genere",
+            "creer",
+            "quel",
+            "quelle",
+            "combien",
+            "avec",
+        )
+
+        tokens = re.findall(r"[a-zA-Z]+", normalized)
+        english_score = sum(1 for token in tokens if token in english_markers)
+        french_score = sum(1 for token in tokens if token in french_markers)
+        if english_score > french_score:
+            return "English"
+        if french_score > english_score:
+            return "French"
+        return "the dominant language of the user request"
+
+    @staticmethod
+    def _build_response_language_instruction() -> str:
+        return (
+            "the exact same language as the user request. "
+            "If the request mixes languages, use the dominant language. "
+            "Do not default to French unless French is the dominant language."
+        )
 
     @staticmethod
     def _extract_occasion_fragment(user_request: str) -> str | None:

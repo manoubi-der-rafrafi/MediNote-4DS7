@@ -596,6 +596,26 @@ def _get_profile_row(product_name: str):
     return match.iloc[0] if len(match) > 0 else None
 
 
+def get_product_profile(product_name: str) -> dict[str, Any] | None:
+    profile = _get_profile_row(product_name)
+    if profile is None:
+        return None
+    return {
+        "produit": profile.get("produit"),
+        "theme": profile.get("theme"),
+        "note": profile.get("note"),
+        "indications": profile.get("indications"),
+        "composition": profile.get("composition"),
+        "description": profile.get("description"),
+        "points_positifs": profile.get("points_positifs"),
+        "points_negatifs": profile.get("points_negatifs"),
+        "verdict": profile.get("verdict"),
+        "avis_clients": profile.get("avis_clients"),
+        "url_image": profile.get("url_image"),
+        "url_product": profile.get("url_product"),
+    }
+
+
 def _score_product_for_fete(product_name: str, fete_name: str) -> float:
     datasets = _load_data()
     df_encoded = datasets["df_encoded"]
@@ -740,8 +760,13 @@ def select_product_for_context(context: dict[str, Any]) -> dict[str, Any]:
                 "score": score,
                 "theme": row.get("theme"),
                 "note": row.get("note"),
+                "indications": row.get("indications"),
+                "composition": row.get("composition"),
+                "description": row.get("description"),
                 "points_positifs": row.get("points_positifs"),
+                "points_negatifs": row.get("points_negatifs"),
                 "verdict": row.get("verdict"),
+                "avis_clients": row.get("avis_clients"),
                 "url_image": row.get("url_image"),
                 "product_url": row.get("url_product"),
             }

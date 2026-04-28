@@ -96,8 +96,12 @@ def build_image_prompt(
         f"luxury social media campaign for {selected_product['produit']}, "
         "minimal elegant decor, clean negative space in the center, "
         "soft blurred background, product area intentionally empty, "
+        "empty premium scene prepared for later product compositing, "
+        "single background environment only, no hero object anywhere in the frame, "
+        "clear table surface or abstract foreground only, "
         "background only, no product, no bottle, no box, no packaging, no packshot, "
         "no label, no brand text, no readable text, no typography, no watermark, "
         "no collage, no duplicate object, no fruit in foreground, no flowers in foreground, "
-        "no water splash crossing the center, no central object."
+        "no water splash crossing the center, no medicine object, no cosmetic object, "
+        "no supplement object, no pharmacy object, no central object, no lower-center object."
     )

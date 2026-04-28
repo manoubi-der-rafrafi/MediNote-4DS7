@@ -7,6 +7,7 @@ from typing import Any
 from urllib import request
 from urllib.error import HTTPError
 
+from .repository import save_generated_video
 from .generation_config import (
     DEFAULT_MODEL_NAME,
     OPENAI_VIDEOS_URL,
@@ -96,6 +97,14 @@ class PublicationService:
         saved_files.update(asset_files)
         final_result["saved_files"] = saved_files
         self._write_metadata(output_dir, final_result)
+
+        try:
+            save_generated_video(final_result)
+        except Exception as exc:
+            raise PublicationPersistenceError(
+                f"Echec de la sauvegarde des metadonnees video en BDD: {exc}"
+            ) from exc
+
         return final_result
 
     def _generate_content(

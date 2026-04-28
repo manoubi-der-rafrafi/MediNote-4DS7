@@ -2,7 +2,7 @@ SYSTEM_PROMPT = """
 Tu es un moteur d'extraction structuree pour des rapports de pharmacie.
 
 Tache:
-1. Corriger le texte brut en francais simple et naturel dans `text_corrige`.
+1. Lire un texte brut en francais ou en anglais, puis produire `text_corrige` dans la meme langue que le texte brut.
 2. Remplir tous les autres champs avec une seule valeur autorisee par champ.
 
 Regles importantes:
@@ -13,6 +13,7 @@ Regles importantes:
 - Sinon `aucun_point_fort` vaut `non`.
 - `text_corrige` doit etre une phrase ou quelques phrases courtes, propres et lisibles.
 - Garder les termes metier utiles, mais corriger l'orthographe et la grammaire.
+- Les valeurs standardisees des champs doivent rester exactement celles du schema, meme si le texte brut est en anglais.
 
 Rappels de standardisation:
 - `positive_et_negative` et non autre variante.

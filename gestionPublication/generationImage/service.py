@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from .copywriter import generate_social_posts
 from .engine import (
     ImageGenerationPersistenceError,
     download_product_reference,
@@ -11,6 +12,7 @@ from .engine import (
     write_metadata,
 )
 from .prompts import build_image_prompt
+from .repository import save_generated_image
 from .selectors import (
     ImageGenerationContextError,
     detect_exam_period,
@@ -46,6 +48,8 @@ class ImageGenerationService:
             reference_date=reference_date,
         )
         selected_product = select_product_for_context(context)
+        social_posts = generate_social_posts(context, selected_product)
+        preferred_platform = self._resolve_preferred_platform(payload)
 
         result: dict[str, Any] = {
             "status": "success",
@@ -61,8 +65,16 @@ class ImageGenerationService:
             "produit_source": selected_product["produit"],
             "product_url": selected_product.get("product_url") or "",
             "image_url": selected_product.get("url_image") or "",
-            "description_post": self._build_description_post(context, selected_product),
+            "description_post": social_posts.get(preferred_platform) or social_posts["default"],
+            "publication_posts": {
+                "facebook": social_posts.get("facebook", ""),
+                "instagram": social_posts.get("instagram", ""),
+                "preferred_platform": preferred_platform,
+            },
         }
+        overlay_text = self._extract_overlay_text(payload)
+        if overlay_text:
+            result["image_overlay"] = overlay_text
 
         output_dir = prepare_output_dir(result)
         product_image, reference_files = download_product_reference(output_dir, selected_product)
@@ -78,10 +90,19 @@ class ImageGenerationService:
                 product_image=product_image,
                 selected_product=selected_product,
                 context=context,
+                overlay_text=overlay_text,
             )
         )
         result["saved_files"] = saved_files
         write_metadata(output_dir, result)
+
+        try:
+            save_generated_image(result)
+        except Exception as exc:
+            raise ImageGenerationPersistenceError(
+                f"Echec de la sauvegarde des metadonnees image en BDD: {exc}"
+            ) from exc
+
         return result
 
     @staticmethod
@@ -108,27 +129,22 @@ class ImageGenerationService:
             ) from exc
 
     @staticmethod
-    def _build_description_post(
-        context: dict[str, Any],
-        selected_product: dict[str, Any],
-    ) -> str:
-        occasion = context["occasion"]
-        product = selected_product["produit"]
-        occasion_type = context["occasion_type"]
+    def _resolve_preferred_platform(payload: dict[str, Any]) -> str:
+        platform = str(payload.get("platform") or payload.get("preferred_platform") or "").strip().lower()
+        if platform in {"facebook", "instagram"}:
+            return platform
+        return "instagram"
 
-        if occasion_type == "periode_examens":
-            return (
-                f"Vital met {product} en avant pour accompagner la periode des examens "
-                "avec un univers visuel clair, premium et adapte aux reseaux sociaux."
-            )
+    @staticmethod
+    def _extract_overlay_text(payload: dict[str, Any]) -> dict[str, str] | None:
+        overlay_text: dict[str, str] = {}
+        for source_key, target_key in (
+            ("overlay_badge", "badge"),
+            ("overlay_title", "title"),
+            ("overlay_subtitle", "subtitle"),
+        ):
+            value = payload.get(source_key)
+            if isinstance(value, str) and value.strip():
+                overlay_text[target_key] = value.strip()
 
-        if occasion_type == "saison":
-            return (
-                f"Publication image Vital pour la saison {occasion}, construite autour du produit "
-                f"{product} avec un angle marketing coherent."
-            )
-
-        return (
-            f"Publication image Vital pour {occasion}, basee sur le produit {product} "
-            "et sur la methode de selection issue du notebook."
-        )
+        return overlay_text or None

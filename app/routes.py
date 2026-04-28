@@ -1,6 +1,8 @@
 import json
+import traceback
+from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, abort, jsonify, request, send_file
 from gestionPublication import (
     ImageGenerationConfigError,
     ImageGenerationContextError,
@@ -14,14 +16,17 @@ from gestionPublication import (
     PublicationResponseError,
     PublicationService,
 )
+from gestionPublication.generationImage.config import OUTPUT_DIR
 from gestionRapport.structuration import (
     StructurationConfigError,
+    StructurationPersistenceError,
     StructurationRapportService,
     StructurationRequestError,
     StructurationResponseError,
 )
 from orchestrateur import (
     OrchestratorConfigError,
+    OrchestratorMissingDataError,
     OrchestratorProcessingError,
     OrchestratorRequestError,
     OrchestratorResponseError,
@@ -29,6 +34,28 @@ from orchestrateur import (
 )
 
 main = Blueprint("main", __name__)
+
+
+def build_orchestrator_missing_report_response(details: str) -> tuple:
+    return (
+        jsonify(
+            {
+                "status": "missing_information",
+                "intent": "rapport",
+                "message": (
+                    "Votre demande concerne un rapport, mais le texte du rapport n'a pas ete fourni. "
+                    "Ajoutez le contenu du rapport dans le champ 'rapport'."
+                ),
+                "data": None,
+                "choices": [],
+                "missing_fields": ["rapport"],
+                "error": "Des donnees sont manquantes.",
+                "source": "request",
+                "details": details,
+            }
+        ),
+        200,
+    )
 
 
 def extract_text_from_request() -> str | None:
@@ -42,7 +69,7 @@ def extract_text_from_request() -> str | None:
     if isinstance(form_text, str) and form_text.strip():
         return form_text.strip()
 
-    raw_body = request.get_data(cache=False)
+    raw_body = request.get_data(cache=True)
     if not raw_body:
         return None
 
@@ -81,7 +108,7 @@ def extract_demande_from_request() -> str | None:
         if isinstance(form_value, str) and form_value.strip():
             return form_value.strip()
 
-    raw_body = request.get_data(cache=False)
+    raw_body = request.get_data(cache=True)
     if not raw_body:
         return None
 
@@ -104,6 +131,70 @@ def extract_demande_from_request() -> str | None:
                 field_value = parsed.get(field_name)
                 if isinstance(field_value, str) and field_value.strip():
                     return field_value.strip()
+
+    return None
+
+
+def extract_report_from_request() -> str | None:
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict):
+        for field_name in ("rapport", "report_text"):
+            field_value = payload.get(field_name)
+            if isinstance(field_value, str) and field_value.strip():
+                return field_value.strip()
+
+    for field_name in ("rapport", "report_text"):
+        form_value = request.form.get(field_name)
+        if isinstance(form_value, str) and form_value.strip():
+            return form_value.strip()
+
+    raw_body = request.get_data(cache=True)
+    if not raw_body:
+        return None
+
+    for encoding in ("utf-8-sig", "utf-8", "utf-16", "utf-16-le", "utf-16-be", "latin-1"):
+        try:
+            decoded = raw_body.decode(encoding).strip()
+        except UnicodeDecodeError:
+            continue
+
+        if not decoded:
+            continue
+
+        try:
+            parsed = json.loads(decoded)
+        except json.JSONDecodeError:
+            continue
+
+        if isinstance(parsed, dict):
+            for field_name in ("rapport", "report_text"):
+                field_value = parsed.get(field_name)
+                if isinstance(field_value, str) and field_value.strip():
+                    return field_value.strip()
+
+    return None
+
+
+def extract_int_from_request(*field_names: str) -> int | None:
+    payload = request.get_json(silent=True)
+    if isinstance(payload, dict):
+        for field_name in field_names:
+            field_value = payload.get(field_name)
+            if field_value is None:
+                continue
+            try:
+                return int(field_value)
+            except (TypeError, ValueError):
+                return None
+
+    for field_name in field_names:
+        form_value = request.form.get(field_name)
+        if form_value is None:
+            continue
+        try:
+            return int(form_value)
+        except (TypeError, ValueError):
+            return None
 
     return None
 
@@ -177,6 +268,17 @@ def structure_points_forts():
             ),
             502,
         )
+    except StructurationPersistenceError as exc:
+        return (
+            jsonify(
+                {
+                    "error": "La sauvegarde en base du rapport structure a echoue.",
+                    "source": "storage",
+                    "details": str(exc),
+                }
+            ),
+            500,
+        )
     except Exception as exc:
         return (
             jsonify(
@@ -195,6 +297,9 @@ def structure_points_forts():
 @main.post("/orchestrate")
 def orchestrate_request():
     demande = extract_demande_from_request()
+    report_text = extract_report_from_request()
+    user_id = extract_int_from_request("id_user", "user_id")
+    conversation_id = extract_int_from_request("id_conversation", "conversation_id")
 
     if not isinstance(demande, str) or not demande:
         return (
@@ -206,15 +311,32 @@ def orchestrate_request():
             400,
         )
 
+    if (user_id is None) != (conversation_id is None):
+        return (
+            jsonify(
+                {
+                    "error": "Les champs 'id_user' et 'id_conversation' doivent etre fournis ensemble."
+                }
+            ),
+            400,
+        )
+
     service = OrchestratorService()
 
     try:
-        result = service.handle(demande)
+        result = service.handle(
+            demande,
+            report_text=report_text,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+    except OrchestratorMissingDataError as exc:
+        return build_orchestrator_missing_report_response(str(exc))
     except OrchestratorConfigError as exc:
         return (
             jsonify(
                 {
-                    "error": "Configuration Gemini invalide pour l'orchestrateur.",
+                    "error": "Configuration invalide pour l'orchestrateur.",
                     "source": "config",
                     "details": str(exc),
                 }
@@ -225,8 +347,8 @@ def orchestrate_request():
         return (
             jsonify(
                 {
-                    "error": "L'appel a Gemini a echoue pour l'orchestrateur.",
-                    "source": "gemini_api",
+                    "error": "L'appel a un service externe a echoue pour l'orchestrateur.",
+                    "source": "external_service",
                     "details": str(exc),
                 }
             ),
@@ -236,19 +358,21 @@ def orchestrate_request():
         return (
             jsonify(
                 {
-                    "error": "La reponse retournee par Gemini pour l'orchestrateur est invalide.",
-                    "source": "gemini_response",
+                    "error": "La reponse retournee pour l'orchestrateur est invalide.",
+                    "source": "service_response",
                     "details": str(exc),
                 }
             ),
             502,
         )
     except OrchestratorProcessingError as exc:
+        print("[/orchestrate] Processing error:")
+        traceback.print_exc()
         return (
             jsonify(
                 {
-                    "error": "Le traitement de publication a echoue.",
-                    "source": "publication",
+                    "error": "Le traitement metier de l'orchestrateur a echoue.",
+                    "source": "processing",
                     "details": str(exc),
                 }
             ),
@@ -311,3 +435,29 @@ def generate_video_publication():
         return jsonify({"error": str(exc), "source": "server"}), 500
 
     return jsonify(result), 200
+
+
+@main.get("/media/generated-image")
+def serve_generated_image():
+    raw_path = request.args.get("path", "").strip()
+    if not raw_path:
+        abort(400)
+
+    candidate = Path(raw_path).expanduser()
+    try:
+        resolved = candidate.resolve(strict=True)
+        output_root = OUTPUT_DIR.resolve(strict=True)
+    except FileNotFoundError:
+        abort(404)
+    except Exception:
+        abort(400)
+
+    try:
+        resolved.relative_to(output_root)
+    except ValueError:
+        abort(403)
+
+    if not resolved.is_file():
+        abort(404)
+
+    return send_file(resolved)

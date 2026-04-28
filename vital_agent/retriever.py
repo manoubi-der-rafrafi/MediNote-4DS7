@@ -5,6 +5,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import math
 import re
 from typing import Optional
+from vital_agent.logging_utils import safe_print as print
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+from vital_agent.logging_utils import safe_print as print
 
 # Resolve path relative to this file's directory
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))

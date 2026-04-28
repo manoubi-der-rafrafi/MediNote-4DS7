@@ -27,6 +27,7 @@ from __future__ import annotations
 import pandas as pd
 from vital_agent.prompt   import format_prompt, build_context_block, detect_intent
 from vital_agent.llm      import load_llm
+from vital_agent.logging_utils import safe_print as print
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +51,23 @@ _BUSINESS_INTENTS: set[str] = {
     'momentum', 'comparison', 'strategic',
 }
 
+_PM_PATTERNS: list[str] = [
+    "product manager",
+    "product management",
+    "gestion de produit",
+    "gestion produit",
+    "roadmap",
+    "mvp",
+    "backlog",
+    "user stories",
+    "user story",
+]
+
+
+def _is_product_management_query(query: str) -> bool:
+    q = query.lower().strip()
+    return any(pattern in q for pattern in _PM_PATTERNS)
+
 def _is_chat_query(query: str, intent: str) -> bool:
     """
     Renvoie True si la requête est conversationnelle / non-business.
@@ -60,28 +78,63 @@ def _is_chat_query(query: str, intent: str) -> bool:
     """
     q    = query.lower().strip()
     words = q.split()
+    business_signals = [
+        'produit', 'produits', 'product', 'products', 'gamme', 'vital',
+        'stock', 'vente', 'ventes', 'market', 'marche', 'marché',
+        'analyse', 'strategie', 'stratégie', 'risque', 'opportunite',
+        'opportunité', 'opportunites', 'opportunités', 'portefeuille',
+        'chiffre', 'prix', 'pharmacie', 'parapharmacie', 'concurrent',
+        'categorie', 'catégorie', 'reference', 'référence', 'potentiel',
+        'croissance', 'growth', 'meilleur', 'meilleure', 'best', 'top',
+        'performer', 'momentum', 'trend', 'tendance',
+    ]
+    has_business_signal = any(sig in q for sig in business_signals)
 
     # Très court sans aucun mot-clé business → probablement du chat
-    if len(words) <= 2:
+    if len(words) <= 2 and not has_business_signal:
         return True
 
     # Pattern conversationnel explicite
-    if any(pat in q for pat in _CHAT_PATTERNS):
+    if any(pat in q for pat in _CHAT_PATTERNS) and not has_business_signal:
         return True
 
     # detect_intent retourne 'strategic' comme fallback pour tout ce qui n'est pas reconnu.
     # Si c'est strategic MAIS que la query ne contient pas de signal business clair → chat.
     if intent == 'strategic' and len(words) < 6:
-        business_signals = [
-            'produit', 'gamme', 'vital', 'stock', 'vente', 'marché',
-            'analyse', 'stratégie', 'risque', 'opportunité', 'portefeuille',
-            'chiffre', 'ventes', 'prix', 'pharmacie', 'parapharmacie',
-            'concurrent', 'catégorie', 'référence',
-        ]
-        if not any(sig in q for sig in business_signals):
+        if not has_business_signal:
             return True
 
     return False
+
+
+def _product_management_response() -> str:
+    return (
+        "## Mode Product Management\n\n"
+        "Je peux vous aider comme Product Manager pour structurer un projet.\n\n"
+        "### Livrables possibles\n"
+        "- besoins utilisateurs\n"
+        "- fonctionnalites prioritaires\n"
+        "- user stories\n"
+        "- backlog priorise\n"
+        "- roadmap MVP\n\n"
+        "### Prompt recommande\n"
+        "```text\n"
+        "Agis comme un Product Manager senior.\n"
+        "Contexte : [decris le projet, les utilisateurs cibles et le probleme].\n"
+        "Objectif : [ce que tu veux lancer ou ameliorer].\n"
+        "Je veux : besoins utilisateurs, priorisation des fonctionnalites, user stories, backlog et roadmap MVP.\n"
+        "Reponds en francais de facon claire et structuree.\n"
+        "```\n\n"
+        "### Pour continuer maintenant\n"
+        "Envoyez :\n"
+        "```text\n"
+        "Contexte : ...\n"
+        "Utilisateurs cibles : ...\n"
+        "Probleme a resoudre : ...\n"
+        "Objectif business : ...\n"
+        "Contraintes : ...\n"
+        "```\n"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
