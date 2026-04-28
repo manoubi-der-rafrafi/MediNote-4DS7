@@ -248,11 +248,17 @@ class OrchestratorService:
             classification_result=classification_result,
             dispatched_result=dispatched_result,
         )
+        response_payload["_user_request"] = user_request
         response_payload["message"] = self._generate_explanatory_message(
             client=client,
             user_request=user_request,
             response_payload=response_payload,
         )
+        response_payload["message"] = self._post_process_explanatory_message(
+            user_request=user_request,
+            response_payload=response_payload,
+        )
+        response_payload.pop("_user_request", None)
         return response_payload
 
     def _finalize_conversation_task_response(
@@ -317,11 +323,17 @@ class OrchestratorService:
             dispatched_result=dispatched_result,
         )
         response_payload["task"] = completed_task
+        response_payload["_user_request"] = user_request
         response_payload["message"] = self._generate_explanatory_message(
             client=client,
             user_request=user_request,
             response_payload=response_payload,
         )
+        response_payload["message"] = self._post_process_explanatory_message(
+            user_request=user_request,
+            response_payload=response_payload,
+        )
+        response_payload.pop("_user_request", None)
         return response_payload
 
     def _dispatch(
@@ -576,6 +588,7 @@ class OrchestratorService:
                 data,
                 display=response_payload.get("display"),
                 language=language,
+                user_request=str(response_payload.get("_user_request", "")),
             )
         if status == "success" and action == "delete_report" and isinstance(data, dict):
             report_id = data.get("report_id")
@@ -697,6 +710,7 @@ class OrchestratorService:
         data: Any,
         display: Any = None,
         language: str | None = None,
+        user_request: str = "",
     ) -> str:
         is_english = language == "English"
         if not isinstance(data, dict):
@@ -742,7 +756,7 @@ class OrchestratorService:
 
         displayed_rows = rows[:5]
         rendered_rows = [
-            OrchestratorService._render_row_for_message(row)
+            OrchestratorService._render_row_for_message(row, user_request=user_request)
             for row in displayed_rows
             if isinstance(row, dict)
         ]
@@ -765,7 +779,18 @@ class OrchestratorService:
         return f"{intro}\n{body}"
 
     @staticmethod
-    def _render_row_for_message(row: dict[str, Any]) -> str:
+    def _render_row_for_message(row: dict[str, Any], user_request: str = "") -> str:
+        if (
+            not OrchestratorService._is_explicit_structured_report_request(user_request)
+            and any(key in row for key in ("raw_text", "text_corrige"))
+        ):
+            raw_text = str(row.get("raw_text", "")).strip()
+            if raw_text:
+                return raw_text
+            corrected_text = str(row.get("text_corrige", "")).strip()
+            if corrected_text:
+                return corrected_text
+
         preferred_keys = (
             "id",
             "text_corrige",
@@ -834,12 +859,21 @@ class OrchestratorService:
             if isinstance(tables_used, list) and tables_used
             else str(intent).strip().lower()
         )
+        if (
+            table_name == "structured_reports"
+            and not cls._is_explicit_structured_report_request(user_request)
+        ):
+            return None
+
         column_keys = cls._select_display_columns(
+            user_request=user_request,
             table_name=table_name,
             data_columns=data.get("columns"),
             rows=row_dicts,
         )
         if not column_keys:
+            return None
+        if cls._should_prefer_text_list(user_request=user_request, column_keys=column_keys):
             return None
 
         return {
@@ -860,6 +894,7 @@ class OrchestratorService:
     @classmethod
     def _select_display_columns(
         cls,
+        user_request: str,
         table_name: str,
         data_columns: Any,
         rows: list[dict[str, Any]],
@@ -878,7 +913,24 @@ class OrchestratorService:
             "tasks": ("id", "intent", "action", "status", "created_at", "updated_at"),
             "messages": ("id", "role", "text", "created_at"),
             "conversations": ("id", "title", "created_at", "updated_at"),
-            "structured_reports": ("id", "mouvement", "potentiel", "conseil", "created_at"),
+            "structured_reports": (
+                "id",
+                "raw_text",
+                "text_corrige",
+                "mouvement",
+                "potentiel",
+                "conseil",
+                "emplacement_proximite",
+                "emplacement_qualite",
+                "personnel_attitude",
+                "mise_en_place",
+                "invitations",
+                "stock_disponibilite",
+                "type_pharmacie",
+                "eligibilite_animation",
+                "aucun_point_fort",
+                "created_at",
+            ),
             "generated_images": ("id", "produit", "occasion", "generation_mode", "date_publication", "created_at"),
             "generated_videos": ("id", "produit", "occasion", "generation_mode", "date_publication", "created_at"),
             "conversation": ("id", "intent", "action", "status", "created_at"),
@@ -892,7 +944,121 @@ class OrchestratorService:
                 for column in available_columns
                 if column not in {"sql", "infos_json", "missing_fields_json"}
             ]
+        if (
+            table_name == "structured_reports"
+            and cls._is_explicit_structured_report_request(user_request)
+        ):
+            return selected
         return selected[:6]
+
+    @classmethod
+    def _should_prefer_text_list(
+        cls,
+        user_request: str,
+        column_keys: list[str],
+    ) -> bool:
+        if not column_keys:
+            return False
+
+        normalized_request = cls._normalize_text(user_request)
+        wants_textual_content = any(
+            keyword in normalized_request
+            for keyword in (
+                "texte",
+                "textes",
+                "raw text",
+                "contenu",
+                "contenus",
+                "phrase",
+                "phrases",
+                "rapport contenant",
+                "rapports contenant",
+            )
+        )
+        if not wants_textual_content:
+            return False
+
+        normalized_columns = [cls._normalize_text(column) for column in column_keys]
+        text_like_columns = {
+            "raw_text",
+            "raw text",
+            "text",
+            "texte",
+            "message",
+            "content",
+            "contenu",
+            "description",
+            "description_post",
+            "text_corrige",
+            "rapport",
+            "report_text",
+        }
+        non_text_columns = [
+            column for column in normalized_columns if column not in text_like_columns
+        ]
+
+        return len(non_text_columns) == 0
+
+    @classmethod
+    def _is_explicit_structured_report_request(cls, user_request: str) -> bool:
+        normalized_request = cls._normalize_text(user_request)
+        return any(
+            keyword in normalized_request
+            for keyword in (
+                "structuration",
+                "structure du rapport",
+                "structure des rapports",
+                "rapport structure",
+                "rapports structures",
+                "details du rapport",
+                "details des rapports",
+                "champs du rapport",
+                "champs des rapports",
+                "afficher la structure",
+                "affiche la structure",
+            )
+        )
+
+    @classmethod
+    def _post_process_explanatory_message(
+        cls,
+        user_request: str,
+        response_payload: dict[str, Any],
+    ) -> str:
+        message = str(response_payload.get("message", "")).strip()
+        if not message:
+            return message
+
+        response_payload["_user_request"] = user_request
+        display = response_payload.get("display")
+        if isinstance(display, dict) and display.get("type") == "table":
+            message = cls._strip_markdown_tables(message)
+        return message.strip()
+
+    @staticmethod
+    def _strip_markdown_tables(message: str) -> str:
+        lines = message.splitlines()
+        cleaned_lines: list[str] = []
+        in_table = False
+
+        for line in lines:
+            stripped = line.strip()
+            is_table_line = "|" in stripped
+            is_separator_line = bool(re.fullmatch(r"\|?[\s:-]+\|[\s|:-]*", stripped))
+
+            if is_table_line or is_separator_line:
+                in_table = True
+                continue
+
+            if in_table and not stripped:
+                continue
+
+            in_table = False
+            cleaned_lines.append(line)
+
+        cleaned_message = "\n".join(cleaned_lines)
+        cleaned_message = re.sub(r"\n{3,}", "\n\n", cleaned_message)
+        return cleaned_message.strip()
 
     @staticmethod
     def _display_label_for_column(column: str) -> str:

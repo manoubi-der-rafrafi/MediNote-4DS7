@@ -128,7 +128,10 @@ Contraintes:
 - Si la reponse contient des lignes de base de donnees, privilegie les champs les plus importants pour l'utilisateur et evite de recopier inutilement tous les champs techniques.
 - Si `data.query_summary` est present, utilise-le seulement comme contexte, pas comme reponse finale a lui seul.
 - Si `display.type="table"` est fourni dans le resultat technique, considere qu'un vrai tableau sera affiche par l'interface. Dans ce cas, `message` doit servir d'introduction claire, eventuellement avec un court resume Markdown, sans recopier inutilement tout le tableau.
-- Si l'utilisateur demande explicitement un tableau, ou si un tableau est la facon la plus claire de presenter plusieurs lignes comparables, tu peux retourner un `message` qui annonce clairement ce tableau.
+- Si l'utilisateur demande explicitement des textes, phrases, contenus, extraits, ou une simple liste de rapports, privilegie une liste Markdown simple dans `message` plutot qu'un tableau.
+- Si le resultat principal correspond a une seule colonne textuelle (par exemple `raw_text`, `text`, `text_corrige`, `message`, `description`), n'annonce pas de tableau et ne reformate pas la reponse en tableau.
+- Pour la table `structured_reports`, comportement par defaut: affiche seulement les textes des rapports (`raw_text`, ou `text_corrige` si necessaire). N'affiche la structuration complete des champs que si l'utilisateur le demande explicitement.
+- Si l'utilisateur demande explicitement un tableau, ou si un tableau est la facon la plus claire de presenter plusieurs lignes comparables avec plusieurs colonnes utiles, tu peux retourner un `message` qui annonce clairement ce tableau.
 - Si le resultat indique une classification sans execution, explique ce qui a ete compris.
 
 Format attendu:

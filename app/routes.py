@@ -3,6 +3,7 @@ import traceback
 from pathlib import Path
 
 from flask import Blueprint, abort, jsonify, request, send_file
+from conversation import ConversationAccessError
 from gestionPublication import (
     ImageGenerationConfigError,
     ImageGenerationContextError,
@@ -381,6 +382,16 @@ def orchestrate_request():
         )
     except OrchestratorMissingDataError as exc:
         return build_orchestrator_missing_report_response(str(exc))
+    except ConversationAccessError as exc:
+        return (
+            jsonify(
+                {
+                    "error": str(exc),
+                    "source": "conversation_access",
+                }
+            ),
+            403,
+        )
     except OrchestratorConfigError as exc:
         return (
             jsonify(
