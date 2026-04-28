@@ -255,6 +255,96 @@ class VitalAgent:
         self._ensure_data_loaded()
         return self._retriever
 
+    def _format_metric(self, value, digits: int = 2) -> str:
+        if isinstance(value, float):
+            return f"{value:.{digits}f}"
+        return str(value) if value not in (None, "", "nan") else "[non disponible]"
+
+    def _build_local_fallback_response(
+        self,
+        query: str,
+        intent: str,
+        retrieved: pd.DataFrame,
+        error: Exception,
+    ) -> str:
+        if retrieved.empty:
+            return (
+                "## Resultat indisponible\n\n"
+                "Aucun produit pertinent n'a ete trouve dans les donnees locales.\n\n"
+                f"**Cause technique :** {error.__class__.__name__}: {error}"
+            )
+
+        table_rows = []
+        for _, row in retrieved.head(5).iterrows():
+            table_rows.append(
+                "| {name} | {gamme} | {opp}/8 | {risk}/8 | {mom} | {stock} |".format(
+                    name=row.get("product_name", "[sans nom]"),
+                    gamme=row.get("gamme", "[non disponible]"),
+                    opp=self._format_metric(row.get("opportunity_score"), 1),
+                    risk=self._format_metric(row.get("risk_score"), 1),
+                    mom=self._format_metric(row.get("momentum_score"), 3),
+                    stock=row.get("stock_status", "[non disponible]"),
+                )
+            )
+
+        title = {
+            "opportunity": "## Meilleures opportunites",
+            "risk": "## Produits a risque",
+            "stock": "## Alerte stock",
+            "gamme": "## Analyse de gamme",
+            "product": "## Profil produit",
+            "momentum": "## Produits a fort momentum",
+            "trend": "## Tendances produits",
+            "comparison": "## Comparaison produits",
+        }.get(intent, "## Analyse portefeuille")
+
+        top_row = retrieved.iloc[0]
+        if intent == "opportunity":
+            summary = (
+                f"Le produit en tete est **{top_row.get('product_name', '[sans nom]')}** "
+                f"avec une opportunite de **{self._format_metric(top_row.get('opportunity_score'), 1)}/8** "
+                f"et un momentum de **{self._format_metric(top_row.get('momentum_score'), 3)}**."
+            )
+        elif intent == "risk":
+            summary = (
+                f"Le produit le plus critique est **{top_row.get('product_name', '[sans nom]')}** "
+                f"avec un risque de **{self._format_metric(top_row.get('risk_score'), 1)}/8**."
+            )
+        else:
+            summary = (
+                f"Reponse locale generee a partir des donnees Vital pour la demande : **{query}**."
+            )
+
+        actions = []
+        for _, row in retrieved.head(3).iterrows():
+            actions.append(
+                f"- **{row.get('product_name', '[sans nom]')}** : "
+                f"opp {self._format_metric(row.get('opportunity_score'), 1)}/8, "
+                f"risk {self._format_metric(row.get('risk_score'), 1)}/8, "
+                f"momentum {self._format_metric(row.get('momentum_score'), 3)}, "
+                f"stock {row.get('stock_status', '[non disponible]')}."
+            )
+
+        return "\n\n".join(
+            [
+                title,
+                summary,
+                "\n".join(
+                    [
+                        "| Produit | Gamme | Opportunite | Risque | Momentum | Stock |",
+                        "| --- | --- | --- | --- | --- | --- |",
+                        *table_rows,
+                    ]
+                ),
+                "## Actions recommandees\n" + "\n".join(actions),
+                (
+                    "## Note technique\n"
+                    "Reponse generee en mode local de secours, sans LLM externe.\n\n"
+                    f"**Erreur source :** {error.__class__.__name__}: {error}"
+                ),
+            ]
+        )
+
     # ─────────────────────────────────────────────────────────────────────────
     # ROUTING — sélection de l'outil de retrieval
     # (inchangé fonctionnellement, opère après lazy-load)
@@ -385,4 +475,8 @@ class VitalAgent:
 
         # ── Étape 6 : Génération LLM ──────────────────────────────────────
         print('🤖 Génération ...')
-        return self._llm(prompt)
+        try:
+            return self._llm(prompt)
+        except Exception as exc:
+            print(f"LLM indisponible, reponse locale de secours: {exc}")
+            return self._build_local_fallback_response(query, intent, retrieved, exc)

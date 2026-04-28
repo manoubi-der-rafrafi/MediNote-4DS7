@@ -58,6 +58,55 @@ def build_orchestrator_missing_report_response(details: str) -> tuple:
     )
 
 
+def build_orchestrator_quota_response(details: str) -> tuple:
+    normalized = details.lower()
+    retry_message = ""
+    retry_match = None
+    try:
+        import re
+
+        retry_match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", normalized)
+    except Exception:
+        retry_match = None
+
+    if retry_match:
+        retry_seconds = retry_match.group(1)
+        retry_message = f" Reessayez dans environ {retry_seconds} secondes."
+
+    return (
+        jsonify(
+            {
+                "error": "Le quota Gemini est depasse pour l'orchestrateur.",
+                "source": "gemini_quota",
+                "message": (
+                    "Le service Gemini a refuse la requete parce que le quota disponible est epuise."
+                    + retry_message
+                ),
+                "details": details,
+            }
+        ),
+        429,
+    )
+
+
+def build_orchestrator_auth_response(details: str) -> tuple:
+    return (
+        jsonify(
+            {
+                "error": "La cle Gemini utilisee par l'orchestrateur est invalide ou bloquee.",
+                "source": "gemini_auth",
+                "message": (
+                    "Le service Gemini a refuse la requete car la cle API est invalide, bloquee, "
+                    "ou signalee comme exposee. Remplacez GEMINI_API_KEY par une nouvelle cle valide "
+                    "puis redemarrez le serveur."
+                ),
+                "details": details,
+            }
+        ),
+        403,
+    )
+
+
 def extract_text_from_request() -> str | None:
     payload = request.get_json(silent=True)
     if isinstance(payload, dict):
@@ -344,12 +393,18 @@ def orchestrate_request():
             500,
         )
     except OrchestratorRequestError as exc:
+        details = str(exc)
+        normalized = details.lower()
+        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
+            return build_orchestrator_quota_response(details)
+        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
+            return build_orchestrator_auth_response(details)
         return (
             jsonify(
                 {
                     "error": "L'appel a un service externe a echoue pour l'orchestrateur.",
                     "source": "external_service",
-                    "details": str(exc),
+                    "details": details,
                 }
             ),
             502,
@@ -368,12 +423,18 @@ def orchestrate_request():
     except OrchestratorProcessingError as exc:
         print("[/orchestrate] Processing error:")
         traceback.print_exc()
+        details = str(exc)
+        normalized = details.lower()
+        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
+            return build_orchestrator_quota_response(details)
+        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
+            return build_orchestrator_auth_response(details)
         return (
             jsonify(
                 {
                     "error": "Le traitement metier de l'orchestrateur a echoue.",
                     "source": "processing",
-                    "details": str(exc),
+                    "details": details,
                 }
             ),
             502,

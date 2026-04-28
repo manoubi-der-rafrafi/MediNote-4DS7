@@ -84,6 +84,17 @@ class OrchestratorService:
                 conversation_id=conversation_id,
             )
 
+        local_report_classification = self._try_local_report_classification(user_request)
+        if local_report_classification is not None:
+            return self._finalize_response(
+                client=None,
+                user_request=user_request,
+                classification_result=local_report_classification,
+                report_text=report_text,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+
         if self._looks_like_product_management_request(user_request):
             classification_result = {
                 "intent": "produit",
@@ -458,6 +469,12 @@ class OrchestratorService:
             "action": action,
             "message": "",
             "data": data,
+            "display": self._build_display_payload(
+                user_request=user_request,
+                intent=intent,
+                action=action,
+                data=data,
+            ),
             "choices": choices,
             "missing_fields": missing_fields,
         }
@@ -557,6 +574,7 @@ class OrchestratorService:
         if status == "success" and action == "query_database":
             return OrchestratorService._build_query_database_fallback_message(
                 data,
+                display=response_payload.get("display"),
                 language=language,
             )
         if status == "success" and action == "delete_report" and isinstance(data, dict):
@@ -677,6 +695,7 @@ class OrchestratorService:
     @staticmethod
     def _build_query_database_fallback_message(
         data: Any,
+        display: Any = None,
         language: str | None = None,
     ) -> str:
         is_english = language == "English"
@@ -688,14 +707,33 @@ class OrchestratorService:
         row_count = data.get("row_count")
         if row_count == 0:
             if is_english:
-                return "No result was found in the database."
-            return "Aucun resultat n'a ete trouve dans la base de donnees."
+                return "## Database Results\n\nNo result was found in the database."
+            return "## Resultats BDD\n\nAucun resultat n'a ete trouve dans la base de donnees."
 
         rows = data.get("rows")
         if not isinstance(row_count, int):
             if is_english:
                 return "The database query was executed successfully."
             return "La requete sur la base de donnees a ete executee avec succes."
+
+        if isinstance(display, dict) and display.get("type") == "table":
+            title = str(display.get("title", "")).strip()
+            if is_english:
+                heading = title or "Database Results"
+                suffix = (
+                    "\n\nOnly part of the results is shown in the table."
+                    if bool(data.get("truncated", False))
+                    else ""
+                )
+                return f"## {heading}\n\nI found {row_count} result(s) in the database.{suffix}"
+
+            heading = title or "Resultats BDD"
+            suffix = (
+                "\n\nSeule une partie des resultats est affichee dans le tableau."
+                if bool(data.get("truncated", False))
+                else ""
+            )
+            return f"## {heading}\n\nJ'ai trouve {row_count} resultat(s) dans la base de donnees.{suffix}"
 
         if not isinstance(rows, list) or not rows:
             if is_english:
@@ -768,6 +806,146 @@ class OrchestratorService:
                     break
 
         return ", ".join(parts)
+
+    @classmethod
+    def _build_display_payload(
+        cls,
+        user_request: str,
+        intent: Any,
+        action: Any,
+        data: Any,
+    ) -> dict[str, Any] | None:
+        if str(action).strip().lower() != "query_database":
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        rows = data.get("rows")
+        if not isinstance(rows, list) or not rows:
+            return None
+
+        row_dicts = [row for row in rows if isinstance(row, dict)]
+        if not row_dicts:
+            return None
+
+        tables_used = data.get("tables_used")
+        table_name = (
+            str(tables_used[0]).strip().lower()
+            if isinstance(tables_used, list) and tables_used
+            else str(intent).strip().lower()
+        )
+        column_keys = cls._select_display_columns(
+            table_name=table_name,
+            data_columns=data.get("columns"),
+            rows=row_dicts,
+        )
+        if not column_keys:
+            return None
+
+        return {
+            "type": "table",
+            "title": cls._build_display_title(user_request, table_name),
+            "columns": [
+                {"key": key, "label": cls._display_label_for_column(key)}
+                for key in column_keys
+            ],
+            "rows": [
+                {key: cls._serialize_display_value(row.get(key)) for key in column_keys}
+                for row in row_dicts
+            ],
+            "truncated": bool(data.get("truncated", False)),
+            "row_count": int(data.get("row_count", len(row_dicts))),
+        }
+
+    @classmethod
+    def _select_display_columns(
+        cls,
+        table_name: str,
+        data_columns: Any,
+        rows: list[dict[str, Any]],
+    ) -> list[str]:
+        available_columns: list[str] = []
+        if isinstance(data_columns, list):
+            available_columns = [
+                str(column).strip()
+                for column in data_columns
+                if isinstance(column, str) and str(column).strip()
+            ]
+        if not available_columns and rows:
+            available_columns = [str(key) for key in rows[0].keys()]
+
+        preferred_by_table: dict[str, tuple[str, ...]] = {
+            "tasks": ("id", "intent", "action", "status", "created_at", "updated_at"),
+            "messages": ("id", "role", "text", "created_at"),
+            "conversations": ("id", "title", "created_at", "updated_at"),
+            "structured_reports": ("id", "mouvement", "potentiel", "conseil", "created_at"),
+            "generated_images": ("id", "produit", "occasion", "generation_mode", "date_publication", "created_at"),
+            "generated_videos": ("id", "produit", "occasion", "generation_mode", "date_publication", "created_at"),
+            "conversation": ("id", "intent", "action", "status", "created_at"),
+        }
+        preferred_columns = preferred_by_table.get(table_name, ())
+
+        selected = [column for column in preferred_columns if column in available_columns]
+        if not selected:
+            selected = [
+                column
+                for column in available_columns
+                if column not in {"sql", "infos_json", "missing_fields_json"}
+            ]
+        return selected[:6]
+
+    @staticmethod
+    def _display_label_for_column(column: str) -> str:
+        labels = {
+            "id": "Tache",
+            "intent": "Type",
+            "action": "Action",
+            "status": "Statut",
+            "created_at": "Date",
+            "updated_at": "Mise a jour",
+            "role": "Role",
+            "text": "Message",
+            "title": "Titre",
+            "produit": "Produit",
+            "occasion": "Occasion",
+            "generation_mode": "Mode",
+            "date_publication": "Date publication",
+            "mouvement": "Mouvement",
+            "potentiel": "Potentiel",
+            "conseil": "Conseil",
+        }
+        return labels.get(column, column.replace("_", " ").capitalize())
+
+    @staticmethod
+    def _build_display_title(user_request: str, table_name: str) -> str:
+        normalized = OrchestratorService._normalize_text(user_request)
+        if "tableau" in normalized or "table" in normalized:
+            if table_name == "tasks":
+                return "Liste de vos taches"
+            if table_name == "messages":
+                return "Liste de vos messages"
+
+        titles = {
+            "tasks": "Liste de vos taches",
+            "messages": "Historique des messages",
+            "conversations": "Liste de vos discussions",
+            "structured_reports": "Rapports trouves",
+            "generated_images": "Images trouvees",
+            "generated_videos": "Videos trouvees",
+            "conversation": "Resultats",
+        }
+        return titles.get(table_name, "Resultats")
+
+    @staticmethod
+    def _serialize_display_value(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, (dict, list)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except TypeError:
+                return str(value)
+        return str(value)
 
     @classmethod
     def _resolve_report_text(
@@ -1322,12 +1500,18 @@ class OrchestratorService:
                 normalized,
             )
         )
-        if not has_report or not has_write_action:
+        has_structuring_action = bool(
+            re.search(
+                r"\b(structurer|structure|analyser|analyse|corriger|corrige|traiter|traite|resumer|resume)\b",
+                normalized,
+            )
+        )
+        if not has_report or (not has_write_action and not has_structuring_action):
             return False
 
         return ":" in normalized or bool(
             re.search(
-                r"\b(is|are|est|sont|weak|strong|medium|low|high|faible|fort|forte|moyen|moyenne)\b",
+                r"\b(is|are|est|sont|weak|strong|medium|low|high|faible|fort|forte|moyen|moyenne|potentiel|personnel|emplacement|stock|conseil)\b",
                 normalized,
             )
         )
@@ -1370,6 +1554,12 @@ class OrchestratorService:
 
     @staticmethod
     def _looks_like_report_database_query(normalized: str) -> bool:
+        if re.search(
+            r"\b(structurer|structure|analyser|analyse|corriger|corrige|traiter|traite|resumer|resume)\b",
+            normalized,
+        ):
+            return False
+
         explicit_db_keywords = (
             "bdd",
             "base de donnees",

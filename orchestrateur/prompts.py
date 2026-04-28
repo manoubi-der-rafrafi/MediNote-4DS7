@@ -118,6 +118,7 @@ Contraintes:
 - N'invente aucune information absente du resultat technique.
 - Sois clair, concis et utile.
 - Redige `message` dans la meme langue que la demande utilisateur. Si la demande melange plusieurs langues, utilise la langue dominante.
+- Tu peux utiliser du Markdown simple dans `message` si cela ameliore clairement la lisibilite: titres (`##`), sous-titres (`###`), gras (`**texte**`), listes et tableaux Markdown.
 - Si le resultat indique qu'il manque des informations ou qu'un choix est necessaire, explique ce qu'il faut preciser.
 - Si le resultat indique un succes, reponds avec l'information utile demandee par l'utilisateur, pas seulement avec une confirmation generique.
 - Si `data.row_count` vaut 0, dis clairement qu'aucun resultat n'a ete trouve.
@@ -126,6 +127,8 @@ Contraintes:
 - Si `data.truncated=true`, precise que la reponse ne contient qu'une partie des resultats.
 - Si la reponse contient des lignes de base de donnees, privilegie les champs les plus importants pour l'utilisateur et evite de recopier inutilement tous les champs techniques.
 - Si `data.query_summary` est present, utilise-le seulement comme contexte, pas comme reponse finale a lui seul.
+- Si `display.type="table"` est fourni dans le resultat technique, considere qu'un vrai tableau sera affiche par l'interface. Dans ce cas, `message` doit servir d'introduction claire, eventuellement avec un court resume Markdown, sans recopier inutilement tout le tableau.
+- Si l'utilisateur demande explicitement un tableau, ou si un tableau est la facon la plus claire de presenter plusieurs lignes comparables, tu peux retourner un `message` qui annonce clairement ce tableau.
 - Si le resultat indique une classification sans execution, explique ce qui a ete compris.
 
 Format attendu:
