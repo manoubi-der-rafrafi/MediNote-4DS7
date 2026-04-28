@@ -33,6 +33,12 @@ from orchestrateur import (
     OrchestratorResponseError,
     OrchestratorService,
 )
+from voice import (
+    VoiceTranscriptionConfigError,
+    VoiceTranscriptionRequestError,
+    VoiceTranscriptionService,
+    VoiceValidationError,
+)
 
 main = Blueprint("main", __name__)
 
@@ -267,6 +273,185 @@ def extract_generation_payload(default_media_type: str) -> dict:
     return result
 
 
+def build_orchestrator_response(
+    demande: str,
+    report_text: str | None = None,
+    user_id: int | None = None,
+    conversation_id: int | None = None,
+) -> tuple:
+    service = OrchestratorService()
+
+    try:
+        result = service.handle(
+            demande,
+            report_text=report_text,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+    except OrchestratorMissingDataError as exc:
+        return build_orchestrator_missing_report_response(str(exc))
+    except ConversationAccessError as exc:
+        return (
+            jsonify(
+                {
+                    "error": str(exc),
+                    "source": "conversation_access",
+                }
+            ),
+            403,
+        )
+    except OrchestratorConfigError as exc:
+        return (
+            jsonify(
+                {
+                    "error": "Configuration invalide pour l'orchestrateur.",
+                    "source": "config",
+                    "details": str(exc),
+                }
+            ),
+            500,
+        )
+    except OrchestratorRequestError as exc:
+        details = str(exc)
+        normalized = details.lower()
+        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
+            return build_orchestrator_quota_response(details)
+        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
+            return build_orchestrator_auth_response(details)
+        return (
+            jsonify(
+                {
+                    "error": "L'appel a un service externe a echoue pour l'orchestrateur.",
+                    "source": "external_service",
+                    "details": details,
+                }
+            ),
+            502,
+        )
+    except OrchestratorResponseError as exc:
+        return (
+            jsonify(
+                {
+                    "error": "La reponse retournee pour l'orchestrateur est invalide.",
+                    "source": "service_response",
+                    "details": str(exc),
+                }
+            ),
+            502,
+        )
+    except OrchestratorProcessingError as exc:
+        print("[/orchestrate] Processing error:")
+        traceback.print_exc()
+        details = str(exc)
+        normalized = details.lower()
+        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
+            return build_orchestrator_quota_response(details)
+        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
+            return build_orchestrator_auth_response(details)
+        return (
+            jsonify(
+                {
+                    "error": "Le traitement metier de l'orchestrateur a echoue.",
+                    "source": "processing",
+                    "details": details,
+                }
+            ),
+            502,
+        )
+    except Exception as exc:
+        return (
+            jsonify(
+                {
+                    "error": "L'orchestration a echoue.",
+                    "source": "server",
+                    "details": str(exc),
+                }
+            ),
+            500,
+        )
+
+    return jsonify(result), 200
+
+
+@main.post("/orchestrate-voice")
+def orchestrate_voice_request():
+    audio_file = (
+        request.files.get("voice")
+        or request.files.get("audio")
+        or request.files.get("file")
+    )
+    report_text = extract_report_from_request()
+    user_id = extract_int_from_request("id_user", "user_id")
+    conversation_id = extract_int_from_request("id_conversation", "conversation_id")
+
+    if (user_id is None) != (conversation_id is None):
+        return (
+            jsonify(
+                {
+                    "error": "Les champs 'id_user' et 'id_conversation' doivent etre fournis ensemble."
+                }
+            ),
+            400,
+        )
+
+    transcription_service = VoiceTranscriptionService()
+
+    try:
+        demande = transcription_service.transcribe(audio_file)
+    except VoiceValidationError as exc:
+        return (
+            jsonify(
+                {
+                    "error": str(exc),
+                    "source": "voice_request",
+                }
+            ),
+            400,
+        )
+    except VoiceTranscriptionConfigError as exc:
+        return (
+            jsonify(
+                {
+                    "error": "Configuration invalide pour la transcription vocale.",
+                    "source": "voice_config",
+                    "details": str(exc),
+                }
+            ),
+            500,
+        )
+    except VoiceTranscriptionRequestError as exc:
+        return (
+            jsonify(
+                {
+                    "error": "La transcription du fichier vocal a echoue.",
+                    "source": "voice_transcription",
+                    "details": str(exc),
+                }
+            ),
+            502,
+        )
+
+    orchestrator_response, status_code = build_orchestrator_response(
+        demande,
+        report_text=report_text,
+        user_id=user_id,
+        conversation_id=conversation_id,
+    )
+    orchestrator_payload = orchestrator_response.get_json(silent=True)
+    if orchestrator_payload is None:
+        return orchestrator_response, status_code
+
+    return (
+        jsonify(
+            {
+                "transcription": demande,
+                "result": orchestrator_payload,
+            }
+        ),
+        status_code,
+    )
+
+
 @main.post("/structure-points-forts")
 def structure_points_forts():
     text = extract_text_from_request()
@@ -371,98 +556,12 @@ def orchestrate_request():
             400,
         )
 
-    service = OrchestratorService()
-
-    try:
-        result = service.handle(
-            demande,
-            report_text=report_text,
-            user_id=user_id,
-            conversation_id=conversation_id,
-        )
-    except OrchestratorMissingDataError as exc:
-        return build_orchestrator_missing_report_response(str(exc))
-    except ConversationAccessError as exc:
-        return (
-            jsonify(
-                {
-                    "error": str(exc),
-                    "source": "conversation_access",
-                }
-            ),
-            403,
-        )
-    except OrchestratorConfigError as exc:
-        return (
-            jsonify(
-                {
-                    "error": "Configuration invalide pour l'orchestrateur.",
-                    "source": "config",
-                    "details": str(exc),
-                }
-            ),
-            500,
-        )
-    except OrchestratorRequestError as exc:
-        details = str(exc)
-        normalized = details.lower()
-        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
-            return build_orchestrator_quota_response(details)
-        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
-            return build_orchestrator_auth_response(details)
-        return (
-            jsonify(
-                {
-                    "error": "L'appel a un service externe a echoue pour l'orchestrateur.",
-                    "source": "external_service",
-                    "details": details,
-                }
-            ),
-            502,
-        )
-    except OrchestratorResponseError as exc:
-        return (
-            jsonify(
-                {
-                    "error": "La reponse retournee pour l'orchestrateur est invalide.",
-                    "source": "service_response",
-                    "details": str(exc),
-                }
-            ),
-            502,
-        )
-    except OrchestratorProcessingError as exc:
-        print("[/orchestrate] Processing error:")
-        traceback.print_exc()
-        details = str(exc)
-        normalized = details.lower()
-        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
-            return build_orchestrator_quota_response(details)
-        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
-            return build_orchestrator_auth_response(details)
-        return (
-            jsonify(
-                {
-                    "error": "Le traitement metier de l'orchestrateur a echoue.",
-                    "source": "processing",
-                    "details": details,
-                }
-            ),
-            502,
-        )
-    except Exception as exc:
-        return (
-            jsonify(
-                {
-                    "error": "L'orchestration a echoue.",
-                    "source": "server",
-                    "details": str(exc),
-                }
-            ),
-            500,
-        )
-
-    return jsonify(result), 200
+    return build_orchestrator_response(
+        demande,
+        report_text=report_text,
+        user_id=user_id,
+        conversation_id=conversation_id,
+    )
 
 
 @main.post("/generationImage")
