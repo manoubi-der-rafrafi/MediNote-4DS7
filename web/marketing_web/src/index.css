@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #FBF3F6;
+  --card: #ffffff;
+  --ink: #1F1F1D;
+  --mute: #6B6B66;
+  --line: #E5E4DE;
+  --brand: #D4537E;
+  --brand-dark: #72243E;
+  --brand-soft: #FBEAF0;
+  --ok: #1D9E75;
+  --warn: #BA7517;
+  --bad: #B8263E;
+  --info: #378ADD;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, system-ui, sans-serif;
+  color: var(--ink);
+  background-color: var(--bg);
+}
+
+@layer components {
+  .text-ink {
+    @apply text-[var(--ink)];
+  }
+
+  .text-mute {
+    @apply text-[var(--mute)];
+  }
+
+  .bg-line {
+    @apply bg-[var(--line)];
+  }
+
+  .border-line {
+    @apply border-[var(--line)];
+  }
+
+  .bg-brand {
+    @apply bg-[var(--brand)];
+  }
+
+  .text-brand {
+    @apply text-[var(--brand)];
+  }
+
+  .bg-ok {
+    @apply bg-[var(--ok)];
+  }
+
+  .text-ok {
+    @apply text-[var(--ok)];
+  }
+
+  .bg-warn {
+    @apply bg-[var(--warn)];
+  }
+
+  .text-warn {
+    @apply text-[var(--warn)];
+  }
+
+  .bg-bad {
+    @apply bg-[var(--bad)];
+  }
+
+  .text-bad {
+    @apply text-[var(--bad)];
+  }
+
+  .bg-info {
+    @apply bg-[var(--info)];
+  }
+
+  .text-info {
+    @apply text-[var(--info)];
+  }
+
+  .bg-card {
+    @apply bg-[var(--card)];
+  }
+
+  .bg-brand-soft {
+    @apply bg-[var(--brand-soft)];
+  }
+}
+
+
+::-webkit-scrollbar-thumb {
+  @apply bg-s3 rounded hover:bg-marketing;
+}

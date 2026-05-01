@@ -1,0 +1,9 @@
+[
+  "days_since_last_order",
+  "order_count_30d",
+  "order_count_90d",
+  "revenue_30d",
+  "revenue_90d",
+  "revenue_trend",
+  "churn_label"
+]

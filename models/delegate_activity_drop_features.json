@@ -1,0 +1,7 @@
+[
+  "order_count_last_30d",
+  "order_count_prev_30d",
+  "revenue_90d",
+  "distinct_pharmacies_90d",
+  "performance_score"
+]

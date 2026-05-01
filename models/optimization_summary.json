@@ -1,0 +1,62 @@
+{
+  "optimization_date": "2026-04-29 00:19:14",
+  "models_optimized": 4,
+  "results": [
+    {
+      "task_id": "pharmacy_churn_risk",
+      "baseline_score": 0.8749,
+      "optimized_score": 0.8736,
+      "improvement": -0.0013,
+      "leakage_resolved": false,
+      "negative_predictions_fixed": true,
+      "sample_size_warning": false,
+      "production_ready": false,
+      "mode_active": "mode2",
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\pharmacy_churn_risk_optimized.pkl"
+    },
+    {
+      "task_id": "delegate_performance_score",
+      "baseline_score": 0.7902,
+      "optimized_score": 0.5361,
+      "improvement": -0.2541,
+      "leakage_resolved": true,
+      "negative_predictions_fixed": true,
+      "sample_size_warning": true,
+      "production_ready": false,
+      "mode_active": "mode2",
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\delegate_performance_score_optimized.pkl"
+    },
+    {
+      "task_id": "sales_forecast_30d",
+      "baseline_score": 0.702,
+      "optimized_score": 0.5633,
+      "improvement": -0.1387,
+      "leakage_resolved": true,
+      "negative_predictions_fixed": true,
+      "sample_size_warning": false,
+      "production_ready": false,
+      "mode_active": "mode2",
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\sales_forecast_30d_optimized.pkl"
+    },
+    {
+      "task_id": "product_demand_forecast",
+      "baseline_score": 0.7884,
+      "optimized_score": 0.729,
+      "improvement": -0.0594,
+      "leakage_resolved": true,
+      "negative_predictions_fixed": true,
+      "sample_size_warning": false,
+      "production_ready": true,
+      "mode_active": "mode1",
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\product_demand_forecast_optimized.pkl"
+    }
+  ],
+  "models_promoted_to_mode1": [
+    "product_demand_forecast"
+  ],
+  "models_remaining_mode2": [
+    "pharmacy_churn_risk",
+    "delegate_performance_score",
+    "sales_forecast_30d"
+  ]
+}

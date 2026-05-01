@@ -1,0 +1,7 @@
+[
+  "order_count",
+  "days_since_last_sale",
+  "revenue_90d",
+  "order_count_90d",
+  "revenue_trend"
+]

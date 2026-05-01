@@ -1,0 +1,9 @@
+[
+  "product_popularity_pct",
+  "days_since_last_order",
+  "pharmacy_revenue_90d",
+  "pharmacy_order_count_90d",
+  "churn_label",
+  "product_revenue_90d",
+  "distinct_buyers_90d"
+]

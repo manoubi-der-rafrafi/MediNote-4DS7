@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #F6F5F0;
+    --card: #ffffff;
+    --ink: #1F1F1D;
+    --mute: #6B6B66;
+    --line: #E5E4DE;
+    --ok: #1D9E75;
+    --warn: #BA7517;
+    --bad: #B8263E;
+    --info: #378ADD;
+    --purple: #7F77DD;
+    --sidebar-bg: #2C2C2A;
+  }
+
+  html {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  body {
+    @apply bg-bg text-ink;
+  }
+}
+
+@layer components {
+  .text-label {
+    @apply text-xs uppercase tracking-wide font-semibold text-mute;
+  }
+
+  .text-kpi {
+    @apply text-2xl font-bold text-ink;
+  }
+
+  .chart-container {
+    @apply relative w-full;
+    height: 260px;
+  }
+}

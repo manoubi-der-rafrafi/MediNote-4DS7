@@ -1,0 +1,7 @@
+[
+  "revenue_last_30d",
+  "revenue_prev_30d",
+  "revenue_prev_60d",
+  "revenue_90d",
+  "distinct_buyers_90d"
+]

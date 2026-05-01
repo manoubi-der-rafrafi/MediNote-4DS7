@@ -1,0 +1,76 @@
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ─── Data & PII ──────────────────────────────────────────────────────────────
+# Raw CRM data (large + PII)
+*.csv
+*.xlsx
+*.xls
+tables/
+labels/
+
+# ─── Notebooks ───────────────────────────────────────────────────────────────
+*.ipynb
+.ipynb_checkpoints/
+
+# ─── Reports & generated output ──────────────────────────────────────────────
+reports/
+*.png
+*.jpg
+*.jpeg
+mode3_queue.json
+mode3_requests.jsonl
+
+# ─── Secrets ─────────────────────────────────────────────────────────────────
+users.json
+.env
+.env.local
+.env.production
+
+# ─── Models (keep registry + features, exclude large pkl) ────────────────────
+models/*.pkl
+# But keep these:
+!models/model_registry.json
+!models/*_features.json
+
+# ─── Node / JS ───────────────────────────────────────────────────────────────
+node_modules/
+mobile/node_modules/
+web/*/node_modules/
+web/shared/node_modules/
+dist/
+.expo/
+*.local
+
+# ─── IDE / OS ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# ─── Mobile build artifacts ──────────────────────────────────────────────────
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/ios/build/
+mobile/.expo/
+mobile/_old/
+
+# ─── Web build artifacts ─────────────────────────────────────────────────────
+web/*/dist/
+web/shared/dist/
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-error.log

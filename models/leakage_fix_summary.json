@@ -1,0 +1,24 @@
+{
+  "fix_date": "2026-04-29 01:31:36",
+  "models_fixed": 2,
+  "results": [
+    {
+      "task_id": "campaign_response_probability",
+      "previous_auc": 1.0,
+      "honest_auc": 0.9985,
+      "leakage_feature_removed": "order_last_14d",
+      "verdict": "PASS",
+      "mode_active": "mode1"
+    },
+    {
+      "task_id": "cross_sell_ranking",
+      "previous_auc": 1.0,
+      "honest_auc": 0.8408,
+      "leakage_feature_removed": "pharmacy_bought_last_90d",
+      "verdict": "PASS",
+      "mode_active": "mode1"
+    }
+  ],
+  "total_mode1_in_system": 7,
+  "total_mode2_in_system": 8
+}

@@ -1,0 +1,7 @@
+[
+  "revenue_60d",
+  "revenue_90d",
+  "distinct_buyers_90d",
+  "has_recent_sales",
+  "sales_consistency"
+]
