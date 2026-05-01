@@ -24,7 +24,7 @@ import xgboost as xgb
 from sqlalchemy import text
 
 warnings.filterwarnings("ignore")
-sys.path.append(r"c:\Users\omri\Desktop\pii")
+import os as _os; sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from db_layer import MedinoteDB, FeatureBuilder
 
 # -- Paths ---------------------------------------------------------------------

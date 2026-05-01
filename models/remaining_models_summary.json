@@ -1,0 +1,211 @@
+{
+  "training_date": "2026-04-29 01:18:41",
+  "models_trained": 11,
+  "results": [
+    {
+      "task_id": "payment_default_risk",
+      "type": "classification",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "auc",
+      "metric_value": 0.9982,
+      "verdict": "PASS",
+      "mode_active": "mode1",
+      "sample_warning": false,
+      "top_3_features": [
+        "order_count_prev_180d",
+        "days_since_last_order",
+        "order_frequency"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\payment_default_risk_baseline.pkl"
+    },
+    {
+      "task_id": "campaign_response_probability",
+      "type": "classification",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "auc",
+      "metric_value": 1.0,
+      "verdict": "PASS",
+      "mode_active": "mode1",
+      "sample_warning": false,
+      "top_3_features": [
+        "order_last_14d",
+        "days_since_last_order",
+        "order_count_last_90d"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\campaign_response_probability_baseline.pkl"
+    },
+    {
+      "task_id": "visit_priority_ranking",
+      "type": "regression",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "r2",
+      "metric_value": 0.5224,
+      "verdict": "WEAK",
+      "mode_active": "mode2",
+      "sample_warning": false,
+      "top_3_features": [
+        "revenue_last_90d",
+        "revenue_trend",
+        "days_since_last_sale"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\visit_priority_ranking_baseline.pkl"
+    },
+    {
+      "task_id": "delegate_target_achievement",
+      "type": "classification",
+      "train_size": 100,
+      "test_size": 43,
+      "metric_name": "auc",
+      "metric_value": 0.5,
+      "verdict": "FAIL",
+      "mode_active": "mode2",
+      "sample_warning": false,
+      "top_3_features": [
+        "revenue_last_30d",
+        "revenue_prev_30d",
+        "revenue_prev_60d"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\delegate_target_achievement_baseline.pkl"
+    },
+    {
+      "task_id": "order_cancellation_risk",
+      "type": "classification",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "auc",
+      "metric_value": 0.9978,
+      "verdict": "PASS",
+      "mode_active": "mode1",
+      "sample_warning": false,
+      "top_3_features": [
+        "order_count_prev_30d",
+        "days_since_last_order",
+        "revenue_90d"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\order_cancellation_risk_baseline.pkl"
+    },
+    {
+      "task_id": "complaint_recurrence_risk",
+      "type": "classification",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "auc",
+      "metric_value": 0.5,
+      "verdict": "FAIL",
+      "mode_active": "mode2",
+      "sample_warning": false,
+      "top_3_features": [
+        "max_gap_between_orders",
+        "order_count_last_180d",
+        "order_count_90d"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\complaint_recurrence_risk_baseline.pkl"
+    },
+    {
+      "task_id": "pharmacy_tier_upgrade",
+      "type": "classification",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "auc",
+      "metric_value": 0.9993,
+      "verdict": "PASS",
+      "mode_active": "mode1",
+      "sample_warning": false,
+      "top_3_features": [
+        "revenue_trend",
+        "order_count_last_90d",
+        "revenue_last_90d"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\pharmacy_tier_upgrade_baseline.pkl"
+    },
+    {
+      "task_id": "product_sales_trend",
+      "type": "classification",
+      "train_size": 415,
+      "test_size": 179,
+      "metric_name": "auc",
+      "metric_value": 0.909,
+      "verdict": "PASS",
+      "mode_active": "mode1",
+      "sample_warning": false,
+      "top_3_features": [
+        "revenue_prev_60d",
+        "distinct_buyers_90d",
+        "revenue_prev_30d"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\product_sales_trend_baseline.pkl"
+    },
+    {
+      "task_id": "delegate_activity_drop",
+      "type": "classification",
+      "train_size": 100,
+      "test_size": 43,
+      "metric_name": "auc",
+      "metric_value": 0.509,
+      "verdict": "FAIL",
+      "mode_active": "mode2",
+      "sample_warning": false,
+      "top_3_features": [
+        "order_count_prev_30d",
+        "revenue_90d",
+        "performance_score"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\delegate_activity_drop_baseline.pkl"
+    },
+    {
+      "task_id": "pharmacy_next_purchase_date",
+      "type": "regression",
+      "train_size": 1310,
+      "test_size": 562,
+      "metric_name": "r2",
+      "metric_value": -34.0997,
+      "verdict": "FAIL",
+      "mode_active": "mode2",
+      "sample_warning": false,
+      "top_3_features": [
+        "days_since_last_sale",
+        "order_count",
+        "revenue_trend"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\pharmacy_next_purchase_date_baseline.pkl"
+    },
+    {
+      "task_id": "cross_sell_ranking",
+      "type": "classification",
+      "train_size": 13652,
+      "test_size": 5852,
+      "metric_name": "auc",
+      "metric_value": 1.0,
+      "verdict": "PASS",
+      "mode_active": "mode1",
+      "sample_warning": false,
+      "top_3_features": [
+        "pharmacy_bought_last_90d",
+        "pharm_revenue_90d",
+        "product_popularity_pct"
+      ],
+      "model_saved": "c:\\Users\\omri\\Desktop\\pii\\models\\cross_sell_ranking_baseline.pkl"
+    }
+  ],
+  "total_mode1": 6,
+  "total_mode2": 5,
+  "total_models_in_system": 15,
+  "models_promoted_to_mode1": [
+    "payment_default_risk",
+    "campaign_response_probability",
+    "order_cancellation_risk",
+    "pharmacy_tier_upgrade",
+    "product_sales_trend",
+    "cross_sell_ranking"
+  ],
+  "models_remaining_mode2": [
+    "visit_priority_ranking",
+    "delegate_target_achievement",
+    "complaint_recurrence_risk",
+    "delegate_activity_drop",
+    "pharmacy_next_purchase_date"
+  ]
+}

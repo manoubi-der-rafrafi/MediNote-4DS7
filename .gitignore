@@ -53,11 +53,15 @@ dist/
 .expo/
 *.local
 
-# ─── IDE / OS ────────────────────────────────────────────────────────────────
+# ─── IDE / OS / Tools ────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.DS_Store
 Thumbs.db
+.claude/
+
+# ─── Mobile (has own git repo — push separately) ─────────────────────────────
+mobile/
 
 # ─── Mobile build artifacts ──────────────────────────────────────────────────
 mobile/android/.gradle/

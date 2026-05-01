@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medinote API Tester</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+  header { background: #1e293b; padding: 16px 20px; border-bottom: 1px solid #334155; }
+  header h1 { font-size: 1.2rem; color: #38bdf8; }
+  header p  { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
+  .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+  /* Server config */
+  .config { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .config label { font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px; }
+  .config input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0; padding: 8px 12px; font-size: 0.9rem; width: 260px; }
+  .config input:focus { outline: none; border-color: #38bdf8; }
+
+  /* Auth */
+  .auth-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  .auth-card h2 { font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0; padding: 8px 12px; font-size: 0.9rem; flex: 1; min-width: 140px; }
+  .row input:focus { outline: none; border-color: #38bdf8; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin-top: 10px; }
+  .badge.ok   { background: #064e3b; color: #6ee7b7; }
+  .badge.fail { background: #450a0a; color: #fca5a5; }
+
+  /* Endpoints */
+  .section-title { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin: 24px 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .ep { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; cursor: pointer; transition: border-color .15s; }
+  .ep:hover { border-color: #38bdf8; }
+  .ep .method { font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
+  .GET    { background: #1d4ed8; color: #bfdbfe; }
+  .POST   { background: #15803d; color: #bbf7d0; }
+  .DELETE { background: #b91c1c; color: #fecaca; }
+  .ep .path { font-size: 0.85rem; color: #cbd5e1; }
+  .ep .desc { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+
+  /* Chat */
+  .chat-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .chat-box textarea { width: 100%; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0; padding: 10px; font-size: 0.9rem; resize: vertical; min-height: 60px; }
+  .chat-box textarea:focus { outline: none; border-color: #38bdf8; }
+
+  /* Buttons */
+  button { background: #0284c7; color: #fff; border: none; border-radius: 6px; padding: 9px 18px; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
+  button:hover { background: #0369a1; }
+  button.sm { padding: 6px 12px; font-size: 0.8rem; }
+  button.danger { background: #b91c1c; }
+  button.danger:hover { background: #991b1b; }
+
+  /* Response panel */
+  #response-panel { margin-top: 20px; }
+  .res-header { display: flex; justify-content: space-between; align-items: center; background: #1e293b; border: 1px solid #334155; border-radius: 8px 8px 0 0; padding: 10px 16px; }
+  .res-header span { font-size: 0.8rem; color: #94a3b8; }
+  .res-header .status { font-weight: 700; }
+  .res-header .status.ok   { color: #6ee7b7; }
+  .res-header .status.err  { color: #fca5a5; }
+  pre { background: #0f172a; border: 1px solid #334155; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; overflow-x: auto; font-size: 0.78rem; line-height: 1.6; max-height: 480px; overflow-y: auto; color: #a5f3fc; white-space: pre-wrap; word-break: break-word; }
+
+  /* Quick user buttons */
+  .users { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .users button { background: #334155; color: #cbd5e1; font-size: 0.78rem; padding: 5px 12px; font-weight: 500; }
+  .users button:hover { background: #475569; }
+  .users button.active { background: #0284c7; color: #fff; }
+
+  /* Mobile quick KPIs */
+  .kpi-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .kpi { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; text-align: center; }
+  .kpi .val { font-size: 1.4rem; font-weight: 700; color: #38bdf8; }
+  .kpi .lbl { font-size: 0.72rem; color: #64748b; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Medinote API Tester</h1>
+  <p>Interactive test console for all API endpoints</p>
+</header>
+
+<div class="container">
+
+  <!-- Server config -->
+  <div class="config">
+    <div>
+      <label>API Base URL</label>
+      <input id="base-url" value="http://192.168.1.11:8000" placeholder="http://192.168.1.11:8000">
+    </div>
+    <button onclick="testConnection()">Test Connection</button>
+    <span id="conn-status"></span>
+  </div>
+
+  <!-- Auth -->
+  <div class="auth-card">
+    <h2>Authentication</h2>
+    <div class="users" id="quick-users">
+      <button onclick="quickLogin('direction','DIRECTION')">direction</button>
+      <button onclick="quickLogin('hanen2024','DELEGUE')">hanen2024</button>
+      <button onclick="quickLogin('ines2024','DELEGUE')">ines2024</button>
+      <button onclick="quickLogin('commercial','COMMERCIAL')">commercial</button>
+      <button onclick="quickLogin('sup_sfax','SUPERVISEUR')">sup_sfax</button>
+      <button onclick="quickLogin('sup_tunis','SUPERVISEUR')">sup_tunis</button>
+      <button onclick="quickLogin('animatrice01','ANIMATRICE')">animatrice01</button>
+    </div>
+    <div class="row">
+      <input id="username" placeholder="Username" value="direction">
+      <input id="password" type="password" placeholder="Password" value="medinote2026">
+      <button onclick="login()">Login</button>
+    </div>
+    <div id="auth-status"></div>
+  </div>
+
+  <!-- KPI strip (loads after login) -->
+  <div class="kpi-strip" id="kpi-strip" style="display:none"></div>
+
+  <!-- Chat -->
+  <div class="section-title">Chat / NLP Query</div>
+  <div class="chat-box">
+    <textarea id="chat-msg" placeholder="Ask anything... e.g. show me top 10 pharmacies by revenue this month"></textarea>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="sendChat()">Send</button>
+      <button class="sm" onclick="setChat('top 10 pharmacies by revenue')">Top pharmacies</button>
+      <button class="sm" onclick="setChat('revenue trend by month 2024')">Monthly trend</button>
+      <button class="sm" onclick="setChat('churn risk by zone')">Churn by zone</button>
+      <button class="sm" onclick="setChat('best selling products')">Best products</button>
+    </div>
+  </div>
+
+  <!-- Endpoints -->
+  <div class="section-title">Dashboard</div>
+  <div class="grid">
+    <div class="ep" onclick="call('GET','/dashboard/kpis')">
+      <span class="method GET">GET</span><span class="path">/dashboard/kpis</span>
+      <div class="desc">Role-scoped KPIs — revenue, churn, alerts</div>
+    </div>
+  </div>
+
+  <div class="section-title">Predictions</div>
+  <div class="grid">
+    <div class="ep" onclick="call('GET','/predict/churn')">
+      <span class="method GET">GET</span><span class="path">/predict/churn</span>
+      <div class="desc">Pharmacies at risk of churning</div>
+    </div>
+    <div class="ep" onclick="call('GET','/predict/payment-risk')">
+      <span class="method GET">GET</span><span class="path">/predict/payment-risk</span>
+      <div class="desc">Payment default risk</div>
+    </div>
+    <div class="ep" onclick="call('GET','/predict/product-demand')">
+      <span class="method GET">GET</span><span class="path">/predict/product-demand</span>
+      <div class="desc">Product demand forecast</div>
+    </div>
+    <div class="ep" onclick="call('GET','/predict/visit-priority')">
+      <span class="method GET">GET</span><span class="path">/predict/visit-priority</span>
+      <div class="desc">Pharmacies to visit today</div>
+    </div>
+  </div>
+
+  <div class="section-title">Analytics (cached 1h)</div>
+  <div class="grid">
+    <div class="ep" onclick="call('GET','/analytics/temporal')">
+      <span class="method GET">GET</span><span class="path">/analytics/temporal</span>
+      <div class="desc">Monthly/yearly revenue trends</div>
+    </div>
+    <div class="ep" onclick="call('GET','/analytics/geographic')">
+      <span class="method GET">GET</span><span class="path">/analytics/geographic</span>
+      <div class="desc">Revenue by zone & governorate</div>
+    </div>
+    <div class="ep" onclick="call('GET','/analytics/delegates')">
+      <span class="method GET">GET</span><span class="path">/analytics/delegates</span>
+      <div class="desc">Delegate performance & objectives</div>
+    </div>
+    <div class="ep" onclick="call('GET','/analytics/products')">
+      <span class="method GET">GET</span><span class="path">/analytics/products</span>
+      <div class="desc">Product analysis & trends</div>
+    </div>
+    <div class="ep" onclick="call('GET','/analytics/rfm')">
+      <span class="method GET">GET</span><span class="path">/analytics/rfm</span>
+      <div class="desc">RFM segmentation</div>
+    </div>
+    <div class="ep" onclick="call('GET','/analytics/pharmacies')">
+      <span class="method GET">GET</span><span class="path">/analytics/pharmacies</span>
+      <div class="desc">Pharmacy profiles & segments</div>
+    </div>
+  </div>
+
+  <div class="section-title">My Zone (Delegate / Supervisor)</div>
+  <div class="grid">
+    <div class="ep" onclick="call('GET','/my/pharmacies')">
+      <span class="method GET">GET</span><span class="path">/my/pharmacies</span>
+      <div class="desc">My pharmacy portfolio</div>
+    </div>
+    <div class="ep" onclick="call('GET','/my/performance')">
+      <span class="method GET">GET</span><span class="path">/my/performance</span>
+      <div class="desc">My revenue & rank</div>
+    </div>
+    <div class="ep" onclick="call('GET','/my/visit-plan')">
+      <span class="method GET">GET</span><span class="path">/my/visit-plan</span>
+      <div class="desc">Today & week visit schedule</div>
+    </div>
+  </div>
+
+  <div class="section-title">Alerts & System</div>
+  <div class="grid">
+    <div class="ep" onclick="call('GET','/alerts')">
+      <span class="method GET">GET</span><span class="path">/alerts</span>
+      <div class="desc">Churn risk & dead zone alerts</div>
+    </div>
+    <div class="ep" onclick="call('GET','/health')">
+      <span class="method GET">GET</span><span class="path">/health</span>
+      <div class="desc">Server & DB status</div>
+    </div>
+    <div class="ep" onclick="call('DELETE','/cache')">
+      <span class="method DELETE">DEL</span><span class="path">/cache</span>
+      <div class="desc">Clear all cached responses</div>
+    </div>
+    <div class="ep" onclick="window.open(base()+'/docs','_blank')">
+      <span class="method GET">GET</span><span class="path">/docs</span>
+      <div class="desc">Swagger UI — full interactive docs</div>
+    </div>
+  </div>
+
+  <!-- Response -->
+  <div id="response-panel" style="display:none">
+    <div class="res-header">
+      <span id="res-label">Response</span>
+      <span id="res-status" class="status"></span>
+    </div>
+    <pre id="res-body"></pre>
+  </div>
+
+</div>
+
+<script>
+let token = null;
+let currentUser = null;
+
+function base() {
+  return document.getElementById('base-url').value.replace(/\/+$/,'');
+}
+
+async function testConnection() {
+  try {
+    const r = await fetch(base()+'/health');
+    const d = await r.json();
+    document.getElementById('conn-status').innerHTML =
+      `<span class="badge ok">Connected — DB:${d.db?'ok':'down'}</span>`;
+  } catch(e) {
+    document.getElementById('conn-status').innerHTML =
+      `<span class="badge fail">Cannot reach server</span>`;
+  }
+}
+
+function quickLogin(user, role) {
+  document.getElementById('username').value = user;
+  document.getElementById('password').value = 'medinote2026';
+  document.querySelectorAll('.users button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  login();
+}
+
+async function login() {
+  const u = document.getElementById('username').value;
+  const p = document.getElementById('password').value;
+  try {
+    const r = await fetch(base()+'/auth/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username:u, password:p})
+    });
+    const d = await r.json();
+    if(d.status === 'success') {
+      token = d.data.access_token;
+      currentUser = d.data;
+      document.getElementById('auth-status').innerHTML =
+        `<span class="badge ok">Logged in as ${u} — ${d.data.role}</span>`;
+      loadKPIs();
+    } else {
+      document.getElementById('auth-status').innerHTML =
+        `<span class="badge fail">${d.detail?.message || 'Login failed'}</span>`;
+    }
+  } catch(e) {
+    document.getElementById('auth-status').innerHTML =
+      `<span class="badge fail">Network error: ${e.message}</span>`;
+  }
+}
+
+async function loadKPIs() {
+  try {
+    const r = await fetch(base()+'/dashboard/kpis', {headers:{'Authorization':'Bearer '+token}});
+    const d = await r.json();
+    const strip = document.getElementById('kpi-strip');
+    strip.style.display = 'grid';
+    strip.innerHTML = '';
+    const data = d.data || {};
+    const entries = [
+      ['revenue_30d', data.total_revenue_30d || data.my_revenue_30d, 'Revenue 30d'],
+      ['pharmacies', data.total_pharmacies || data.my_pharmacies_count, 'Pharmacies'],
+      ['churned', data.churned_pharmacies, 'Churned'],
+      ['at_risk', data.at_risk_pharmacies || data.my_at_risk_count, 'At Risk'],
+      ['delegates', data.active_delegates, 'Delegates'],
+      ['rank', data.my_rank_in_team, 'My Rank'],
+    ].filter(e => e[1] !== undefined && e[1] !== null);
+    entries.forEach(([k,v,l]) => {
+      const el = document.createElement('div');
+      el.className = 'kpi';
+      const fv = typeof v === 'number' ? (v > 9999 ? (v/1000).toFixed(0)+'K' : v) : v;
+      el.innerHTML = `<div class="val">${fv}</div><div class="lbl">${l}</div>`;
+      strip.appendChild(el);
+    });
+  } catch(e) {}
+}
+
+async function call(method, path, body) {
+  if(!token) { alert('Please login first'); return; }
+  showLoading(method, path);
+  const opts = {
+    method, headers:{'Authorization':'Bearer '+token}
+  };
+  if(body) { opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
+  try {
+    const t0 = performance.now();
+    const r = await fetch(base()+path, opts);
+    const ms = Math.round(performance.now()-t0);
+    let text = await r.text();
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch(e) {}
+    showResult(method, path, r.status, pretty, ms);
+  } catch(e) {
+    showResult(method, path, 0, 'Network error: '+e.message, 0);
+  }
+}
+
+function setChat(msg) {
+  document.getElementById('chat-msg').value = msg;
+}
+
+async function sendChat() {
+  const msg = document.getElementById('chat-msg').value.trim();
+  if(!msg) return;
+  await call('POST', '/chat', {message: msg});
+}
+
+function showLoading(method, path) {
+  document.getElementById('response-panel').style.display = 'block';
+  document.getElementById('res-label').textContent = `${method} ${path}`;
+  document.getElementById('res-status').textContent = 'Loading...';
+  document.getElementById('res-status').className = 'status';
+  document.getElementById('res-body').textContent = '...';
+}
+
+function showResult(method, path, status, body, ms) {
+  document.getElementById('response-panel').style.display = 'block';
+  document.getElementById('res-label').textContent = `${method} ${path}  (${ms}ms)`;
+  const st = document.getElementById('res-status');
+  st.textContent = `HTTP ${status}`;
+  st.className = 'status ' + (status >= 200 && status < 300 ? 'ok' : 'err');
+  document.getElementById('res-body').textContent = body;
+}
+
+// Auto-connect on load
+window.onload = () => { testConnection(); };
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+{
+  "audit_date": "2026-04-25T23:59:35",
+  "database_type": "CSV-based (CRM Esprit / Medinote)",
+  "entity_counts": {
+    "pharmacies_clients": 1872,
+    "prospects": 13219,
+    "unique_prospect_ids": 8882,
+    "delegate_locations": 390,
+    "unique_delegates_in_sales": 143,
+    "products": 1199,
+    "sales_records": 543781,
+    "demands_orders": 12036,
+    "unique_demand_ids": 11948,
+    "visit_plans": 38072,
+    "visit_product_records": 189574,
+    "unique_visit_fiches": 12392,
+    "animations": 14078,
+    "visit_reports_nlp": 1542,
+    "demand_items": 13058,
+    "client_delegate_records": 9992
+  },
+  "history_depth": {
+    "sales": {
+      "earliest": "2019-01-03",
+      "latest": "2026-01-22",
+      "months": 84
+    },
+    "demands": {
+      "earliest": "2016-02-19",
+      "latest": "2026-01-22",
+      "months": 119
+    },
+    "visit_planning": {
+      "earliest": "2019-04-01",
+      "latest": "2023-12-22",
+      "months": 56
+    },
+    "animations": {
+      "earliest": "2017-03-14",
+      "latest": "2026-01-16",
+      "months": 106
+    },
+    "sales_detail": {
+      "earliest": "2018-01-03",
+      "latest": "2026-01-22",
+      "months": 96
+    }
+  },
+  "data_quality": {
+    "sales_missing_client_pct": 0.0,
+    "sales_missing_delegate_pct": 11.97,
+    "sales_missing_date_pct": 2.04,
+    "sales_missing_zone_pct": 0.0,
+    "sales_missing_ttc_pct": 0.0,
+    "sales_duplicate_records": 136754,
+    "sales_duplicate_pct": 25.15,
+    "demands_missing_etat_pct": 0.0,
+    "visit_fiches_without_contact_info": 8416,
+    "visit_fiches_without_contact_pct": 67.91,
+    "animations_missing_pharmacy_pct": 0.0,
+    "animations_cancelled_pct": 5.0,
+    "prospects_missing_potentiel_pct": 0.0,
+    "prospects_missing_gouvernorat_pct": 82.31
+  },
+  "class_balance": {
+    "churn_proxy": {
+      "total_clients": 1872,
+      "no_sale_last_60d": 1621,
+      "churn_rate_pct": 86.59,
+      "reference_date": "2026-01-22",
+      "note": "Clients with no sale record in last 60 days relative to latest data date"
+    },
+    "cancellation_proxy": {
+      "total_demands": 12036,
+      "cancelled_or_rejected": 146,
+      "cancellation_rate_pct": 1.21
+    },
+    "animation_status_distribution": {
+      "1": 12783,
+      "-2": 591,
+      "0": 512,
+      "-1": 192
+    },
+    "delegate_activity_drop": {
+      "total_delegates_with_history": 48,
+      "delegates_with_activity_drop": 1,
+      "drop_rate_pct": 2.08,
+      "reference_date": "2023-12-22"
+    },
+    "mouvement_distribution": {
+      "non_precise": 1074,
+      "moyen": 173,
+      "faible": 129,
+      "forte": 86,
+      "tres_forte": 43,
+      "tres_faible": 23,
+      "aucun": 14
+    },
+    "potentiel_distribution": {
+      "non_precise": 1273,
+      "moyen": 112,
+      "forte": 111,
+      "faible": 46
+    },
+    "conseil_distribution": {
+      "non_precise": 1229,
+      "moyen": 178,
+      "forte": 76,
+      "faible": 59
+    }
+  },
+  "registry_readiness": [
+    {
+      "task_id": "01_pharmacy_churn_risk",
+      "description": "Predict pharmacy churn risk",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "02_sales_forecast_30d",
+      "description": "30-day sales forecast per pharmacy",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "03_pharmacy_stockout_risk",
+      "description": "Predict pharmacy stockout risk",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "04_next_purchase_date",
+      "description": "Predict next purchase date",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "05_campaign_response",
+      "description": "Predict campaign response probability",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 14078,
+      "history_months": 106
+    },
+    {
+      "task_id": "06_delegate_performance",
+      "description": "Score delegate performance",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "07_animation_roi",
+      "description": "Predict animation ROI",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 14078,
+      "history_months": 106
+    },
+    {
+      "task_id": "08_crosssell_probability",
+      "description": "Predict cross-sell probability",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "09_payment_default_risk",
+      "description": "Predict payment default risk",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 12036,
+      "history_months": 119
+    },
+    {
+      "task_id": "10_pharmacy_tier_classification",
+      "description": "Classify pharmacy tier",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    },
+    {
+      "task_id": "16_mouvement_prediction",
+      "description": "Predict visit mouvement level",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 1542,
+      "history_months": 12
+    },
+    {
+      "task_id": "17_potentiel_prediction",
+      "description": "Predict pharmacy potentiel",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 1542,
+      "history_months": 12
+    },
+    {
+      "task_id": "18_conseil_prediction",
+      "description": "Predict conseil score",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 1542,
+      "history_months": 12
+    },
+    {
+      "task_id": "19_stock_disponibilite",
+      "description": "Predict stock availability",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 1542,
+      "history_months": 12
+    },
+    {
+      "task_id": "14_attrition_prediction",
+      "description": "Predict delegate attrition",
+      "data_sufficient": true,
+      "recommended_mode": "mode1_ready",
+      "blocking_issue": null,
+      "record_count": 543781,
+      "history_months": 84
+    }
+  ],
+  "overall_recommendation": "The Medinote CRM database contains 543781 sales records, 1872 unique pharmacy clients, 1199 products, and 1542 NLP-ready visit reports. Out of 15 prediction tasks evaluated, 15 are Mode 1 ready (full ML pipeline), 0 can operate in Mode 2 (heuristic/rule-based), and 0 have insufficient data. The sales data spans 84 months with strong depth for churn, forecast, and tier classification tasks. NLP-based predictions (mouvement, potentiel, conseil) are immediately actionable. Key gaps include high delegate ID missing rates in sales data which may impact delegate-centric models. The system can activate Mode 1 pipelines for the majority of tasks right now, with sales forecasting and churn prediction being the strongest candidates."
+}

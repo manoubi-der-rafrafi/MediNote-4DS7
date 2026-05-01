@@ -1,0 +1,12 @@
+{
+  "sales_before_dedup": 543781,
+  "sales_after_dedup": 446100,
+  "duplicates_removed": 97681,
+  "churn_threshold_days": 240,
+  "churn_positive_rate_pct": 38.89,
+  "churn_label_approved": true,
+  "sales_with_delegate": 390809,
+  "sales_without_delegate": 55291,
+  "data_ready_for_modeling": true,
+  "blocking_issues_remaining": []
+}
