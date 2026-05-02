@@ -34,6 +34,8 @@ from orchestrateur import (
     OrchestratorService,
 )
 from voice import (
+    VoiceSynthesisError,
+    VoiceSynthesisService,
     VoiceTranscriptionConfigError,
     VoiceTranscriptionRequestError,
     VoiceTranscriptionService,
@@ -106,6 +108,56 @@ def build_orchestrator_auth_response(details: str) -> tuple:
                     "Le service Gemini a refuse la requete car la cle API est invalide, bloquee, "
                     "ou signalee comme exposee. Remplacez GEMINI_API_KEY par une nouvelle cle valide "
                     "puis redemarrez le serveur."
+                ),
+                "details": details,
+            }
+        ),
+        403,
+    )
+
+
+def build_voice_transcription_quota_response(details: str) -> tuple:
+    normalized = details.lower()
+    retry_message = ""
+    retry_match = None
+    try:
+        import re
+
+        retry_match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", normalized)
+    except Exception:
+        retry_match = None
+
+    if retry_match:
+        retry_seconds = retry_match.group(1)
+        retry_message = f" Reessayez dans environ {retry_seconds} secondes."
+
+    return (
+        jsonify(
+            {
+                "error": "Le quota Gemini est depasse pour la transcription vocale.",
+                "source": "gemini_quota",
+                "message": (
+                    "Le service Gemini a refuse la transcription vocale parce que le quota "
+                    "disponible est epuise."
+                    + retry_message
+                ),
+                "details": details,
+            }
+        ),
+        429,
+    )
+
+
+def build_voice_transcription_auth_response(details: str) -> tuple:
+    return (
+        jsonify(
+            {
+                "error": "La cle Gemini utilisee pour la transcription vocale est invalide ou bloquee.",
+                "source": "gemini_auth",
+                "message": (
+                    "Le service Gemini a refuse la transcription vocale car la cle API est invalide, "
+                    "bloquee, ou signalee comme exposee. Remplacez GEMINI_API_KEY par une nouvelle "
+                    "cle valide puis redemarrez le serveur."
                 ),
                 "details": details,
             }
@@ -253,6 +305,48 @@ def extract_int_from_request(*field_names: str) -> int | None:
             return None
 
     return None
+
+
+def extract_speakable_text(payload: object) -> str | None:
+    if isinstance(payload, str) and payload.strip():
+        return payload.strip()
+
+    if isinstance(payload, dict):
+        for field_name in ("response", "message", "text", "error", "details"):
+            field_value = payload.get(field_name)
+            if isinstance(field_value, str) and field_value.strip():
+                return field_value.strip()
+
+        for field_value in payload.values():
+            nested_text = extract_speakable_text(field_value)
+            if nested_text:
+                return nested_text
+
+    if isinstance(payload, list):
+        for item in payload:
+            nested_text = extract_speakable_text(item)
+            if nested_text:
+                return nested_text
+
+    return None
+
+
+def build_voice_response_payload(payload: object) -> dict:
+    response_text = extract_speakable_text(payload)
+    if not response_text:
+        return {
+            "available": False,
+            "error": "Aucun texte vocalisable trouve dans la reponse orchestrateur.",
+        }
+
+    try:
+        return VoiceSynthesisService().synthesize_base64(response_text)
+    except VoiceSynthesisError as exc:
+        return {
+            "available": False,
+            "error": "La generation vocale a echoue.",
+            "details": str(exc),
+        }
 
 
 def extract_generation_payload(default_media_type: str) -> dict:
@@ -420,12 +514,18 @@ def orchestrate_voice_request():
             500,
         )
     except VoiceTranscriptionRequestError as exc:
+        details = str(exc)
+        normalized = details.lower()
+        if "resource_exhausted" in normalized or "quota exceeded" in normalized:
+            return build_voice_transcription_quota_response(details)
+        if "permission_denied" in normalized or "api key was reported as leaked" in normalized:
+            return build_voice_transcription_auth_response(details)
         return (
             jsonify(
                 {
                     "error": "La transcription du fichier vocal a echoue.",
                     "source": "voice_transcription",
-                    "details": str(exc),
+                    "details": details,
                 }
             ),
             502,
@@ -441,11 +541,14 @@ def orchestrate_voice_request():
     if orchestrator_payload is None:
         return orchestrator_response, status_code
 
+    audio_response = build_voice_response_payload(orchestrator_payload)
+
     return (
         jsonify(
             {
                 "transcription": demande,
                 "result": orchestrator_payload,
+                "audio_response": audio_response,
             }
         ),
         status_code,

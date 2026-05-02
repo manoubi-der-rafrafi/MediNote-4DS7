@@ -4,10 +4,10 @@ from werkzeug.datastructures import FileStorage
 
 from google.genai import types
 
-from orchestrateur.gemini_client import (
+from gemini_keyring import (
     DEFAULT_MODEL_NAME,
-    GeminiClientConfigError,
-    build_client,
+    GeminiKeyConfigError,
+    generate_content_with_key_rotation,
 )
 
 
@@ -45,12 +45,7 @@ class VoiceTranscriptionService:
         audio_bytes, mime_type = self._read_audio_file(audio_file)
 
         try:
-            client = build_client()
-        except GeminiClientConfigError as exc:
-            raise VoiceTranscriptionConfigError(str(exc)) from exc
-
-        try:
-            response = client.models.generate_content(
+            response = generate_content_with_key_rotation(
                 model=self.model_name,
                 contents=[
                     types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
@@ -63,6 +58,8 @@ class VoiceTranscriptionService:
                     "temperature": 0,
                 },
             )
+        except GeminiKeyConfigError as exc:
+            raise VoiceTranscriptionConfigError(str(exc)) from exc
         except Exception as exc:
             raise VoiceTranscriptionRequestError(str(exc)) from exc
 

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any
 
 from pydantic import ValidationError
-from google import genai
 from sqlalchemy.exc import OperationalError
 
 from db.config import DatabaseConfigError
+from gemini_keyring import (
+    GeminiKeyConfigError,
+    generate_content_with_key_rotation,
+)
 from .catalog import build_catalog_prompt_fragment, resolve_tables_for_query
 from .executor import execute_read_only_query
 from .formatter import format_query_result
@@ -62,12 +64,7 @@ class DatabaseQueryService:
             )
 
         try:
-            client = build_client()
-        except DatabaseQueryConfigError as exc:
-            raise DatabaseQueryConfigError(str(exc)) from exc
-
-        try:
-            response = client.models.generate_content(
+            response = generate_content_with_key_rotation(
                 model=self.model_name,
                 contents=[
                     {"role": "user", "parts": [{"text": SQL_AGENT_SYSTEM_PROMPT}]},
@@ -90,6 +87,8 @@ class DatabaseQueryService:
                     "temperature": 0,
                 },
             )
+        except GeminiKeyConfigError as exc:
+            raise DatabaseQueryConfigError(str(exc)) from exc
         except Exception as exc:
             raise DatabaseQueryRequestError(str(exc)) from exc
 
@@ -219,19 +218,6 @@ class DatabaseQueryService:
                 "La reponse de l'agent SQL doit etre un objet JSON."
             )
         return payload
-
-
-def get_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or not api_key.strip():
-        raise DatabaseQueryConfigError(
-            "La variable d'environnement GEMINI_API_KEY est absente ou vide."
-        )
-    return api_key.strip()
-
-
-def build_client() -> genai.Client:
-    return genai.Client(api_key=get_api_key())
 
 
 def _normalize_sql_filter_values(sql: str) -> str:

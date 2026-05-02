@@ -2,6 +2,8 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from gemini_keyring import GeminiKeyConfigError, get_api_key as get_shared_gemini_api_key
+
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = Path(__file__).resolve().parent / "ranim data"
@@ -42,8 +44,10 @@ def get_mistral_api_key() -> str | None:
 
 
 def get_gemini_api_key() -> str | None:
-    api_key = os.getenv("GEMINI_API_KEY")
-    return api_key.strip() if api_key and api_key.strip() else None
+    try:
+        return get_shared_gemini_api_key()
+    except GeminiKeyConfigError:
+        return None
 
 
 @lru_cache(maxsize=1)

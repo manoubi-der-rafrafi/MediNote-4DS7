@@ -27,7 +27,11 @@ from gestionPublication import (
 )
 from gestionProduit import ProductService, ProductServiceError
 from gestionRapport.structuration import StructurationRapportService
-from .gemini_client import DEFAULT_MODEL_NAME, GeminiClientConfigError, build_client
+from .gemini_client import (
+    DEFAULT_MODEL_NAME,
+    GeminiClientConfigError,
+    generate_content_with_key_rotation,
+)
 from .prompts import (
     ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT,
     ORCHESTRATOR_SYSTEM_PROMPT,
@@ -75,6 +79,10 @@ class OrchestratorService:
     ) -> dict[str, Any] | list[Any]:
         local_report_deletion = self._try_local_report_deletion_classification(user_request)
         if local_report_deletion is not None:
+            local_report_deletion = self._with_response_language(
+                local_report_deletion,
+                user_request,
+            )
             return self._finalize_response(
                 client=None,
                 user_request=user_request,
@@ -86,6 +94,10 @@ class OrchestratorService:
 
         local_report_classification = self._try_local_report_classification(user_request)
         if local_report_classification is not None:
+            local_report_classification = self._with_response_language(
+                local_report_classification,
+                user_request,
+            )
             return self._finalize_response(
                 client=None,
                 user_request=user_request,
@@ -99,6 +111,7 @@ class OrchestratorService:
             classification_result = {
                 "intent": "produit",
                 "action": "product_management",
+                "response_language": self._detect_response_language(user_request),
             }
             dispatched_result = self.product_service.handle(
                 user_request,
@@ -115,12 +128,7 @@ class OrchestratorService:
             return response_payload
 
         try:
-            client = build_client()
-        except GeminiClientConfigError as exc:
-            raise OrchestratorConfigError(str(exc)) from exc
-
-        try:
-            response = client.models.generate_content(
+            response = generate_content_with_key_rotation(
                 model=self.model_name,
                 contents=[
                     {"role": "user", "parts": [{"text": ORCHESTRATOR_SYSTEM_PROMPT}]},
@@ -134,6 +142,8 @@ class OrchestratorService:
                     "temperature": 0,
                 },
             )
+        except GeminiClientConfigError as exc:
+            raise OrchestratorConfigError(str(exc)) from exc
         except Exception as exc:
             raise OrchestratorRequestError(str(exc)) from exc
 
@@ -141,8 +151,9 @@ class OrchestratorService:
             parsed = getattr(response, "parsed", None)
             if parsed is not None:
                 if isinstance(parsed, (dict, list)):
+                    parsed = self._with_response_language(parsed, user_request)
                     return self._finalize_response(
-                        client,
+                        None,
                         user_request,
                         parsed,
                         report_text=report_text,
@@ -150,27 +161,38 @@ class OrchestratorService:
                         conversation_id=conversation_id,
                     )
                 if isinstance(parsed, str):
-                    return self._finalize_response(
-                        client,
-                        user_request,
+                    parsed_json = self._with_response_language(
                         self._parse_json(parsed),
+                        user_request,
+                    )
+                    return self._finalize_response(
+                        None,
+                        user_request,
+                        parsed_json,
                         report_text=report_text,
                         user_id=user_id,
                         conversation_id=conversation_id,
                     )
-                return self._finalize_response(
-                    client,
-                    user_request,
+                parsed_json = self._with_response_language(
                     self._parse_json(json.dumps(parsed)),
+                    user_request,
+                )
+                return self._finalize_response(
+                    None,
+                    user_request,
+                    parsed_json,
                     report_text=report_text,
                     user_id=user_id,
                     conversation_id=conversation_id,
                 )
 
             response_text = getattr(response, "text", "")
-            parsed_response = self._parse_json(response_text)
+            parsed_response = self._with_response_language(
+                self._parse_json(response_text),
+                user_request,
+            )
             return self._finalize_response(
-                client,
+                None,
                 user_request,
                 parsed_response,
                 report_text=report_text,
@@ -228,7 +250,7 @@ class OrchestratorService:
             and self.conversation_task_service.is_managed(classification_result)
         ):
             return self._finalize_conversation_task_response(
-                client=client,
+                client=None,
                 user_request=user_request,
                 classification_result=classification_result,
                 report_text=report_text,
@@ -250,7 +272,7 @@ class OrchestratorService:
         )
         response_payload["_user_request"] = user_request
         response_payload["message"] = self._generate_explanatory_message(
-            client=client,
+            client=None,
             user_request=user_request,
             response_payload=response_payload,
         )
@@ -289,6 +311,9 @@ class OrchestratorService:
                 "status": self._status_for_incomplete_task(merge_result.classification),
                 "intent": merge_result.classification.get("intent"),
                 "action": self._infer_action(merge_result.classification),
+                "response_language": self._normalize_response_language(
+                    merge_result.classification.get("response_language")
+                ) or self._detect_response_language(user_request),
                 "message": "",
                 "data": None,
                 "choices": merge_result.choices,
@@ -296,7 +321,7 @@ class OrchestratorService:
                 "task": merge_result.task,
             }
             response_payload["message"] = self._generate_explanatory_message(
-                client=client,
+                client=None,
                 user_request=user_request,
                 response_payload=response_payload,
             )
@@ -325,7 +350,7 @@ class OrchestratorService:
         response_payload["task"] = completed_task
         response_payload["_user_request"] = user_request
         response_payload["message"] = self._generate_explanatory_message(
-            client=client,
+            client=None,
             user_request=user_request,
             response_payload=response_payload,
         )
@@ -406,6 +431,13 @@ class OrchestratorService:
             if isinstance(classification_result, dict)
             else "inconnue"
         )
+        response_language = (
+            self._normalize_response_language(classification_result.get("response_language"))
+            if isinstance(classification_result, dict)
+            else self._detect_response_language(user_request)
+        )
+        if not response_language:
+            response_language = self._detect_response_language(user_request)
         action = (
             self._infer_action(classification_result)
             if isinstance(classification_result, dict)
@@ -479,6 +511,7 @@ class OrchestratorService:
             "status": status,
             "intent": intent,
             "action": action,
+            "response_language": response_language,
             "message": "",
             "data": data,
             "display": self._build_display_payload(
@@ -512,45 +545,65 @@ class OrchestratorService:
                 if isinstance(response_text, str) and response_text.strip():
                     return response_text.strip()
 
-        explanation_client = client
-        if explanation_client is None:
-            try:
-                explanation_client = build_client()
-            except GeminiClientConfigError:
-                explanation_client = None
-
-        if explanation_client is None:
-            return self._build_fallback_message(
-                response_payload,
-                language=self._detect_response_language(user_request),
-            )
-
         try:
-            response = explanation_client.models.generate_content(
-                model=self.model_name,
-                contents=[
-                    {
-                        "role": "user",
-                        "parts": [{"text": ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT}],
+            if client is not None:
+                response = client.models.generate_content(
+                    model=self.model_name,
+                    contents=[
+                        {
+                            "role": "user",
+                            "parts": [{"text": ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT}],
+                        },
+                        {
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "text": build_orchestrator_explanation_user_prompt(
+                                        user_request,
+                                        response_payload,
+                                        response_language=self._resolve_response_language(
+                                            user_request,
+                                            response_payload,
+                                        ),
+                                    )
+                                }
+                            ],
+                        },
+                    ],
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0,
                     },
-                    {
-                        "role": "user",
-                        "parts": [
-                            {
-                                "text": build_orchestrator_explanation_user_prompt(
-                                    user_request,
-                                    response_payload,
-                                    response_language=self._build_response_language_instruction(),
-                                )
-                            }
-                        ],
+                )
+            else:
+                response = generate_content_with_key_rotation(
+                    model=self.model_name,
+                    contents=[
+                        {
+                            "role": "user",
+                            "parts": [{"text": ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT}],
+                        },
+                        {
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "text": build_orchestrator_explanation_user_prompt(
+                                        user_request,
+                                        response_payload,
+                                        response_language=self._resolve_response_language(
+                                            user_request,
+                                            response_payload,
+                                        ),
+                                    )
+                                }
+                            ],
+                        },
+                    ],
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0,
                     },
-                ],
-                config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0,
-                },
-            )
+                )
 
             parsed = getattr(response, "parsed", None)
             if isinstance(parsed, dict) and isinstance(parsed.get("message"), str):
@@ -569,7 +622,7 @@ class OrchestratorService:
 
         return self._build_fallback_message(
             response_payload,
-            language=self._detect_response_language(user_request),
+            language=self._resolve_response_language(user_request, response_payload),
         )
 
     @staticmethod
@@ -582,6 +635,7 @@ class OrchestratorService:
         action = response_payload.get("action")
         data = response_payload.get("data")
         is_english = language == "English"
+        is_arabic = language == "Arabic"
 
         if status == "success" and action == "query_database":
             return OrchestratorService._build_query_database_fallback_message(
@@ -592,21 +646,31 @@ class OrchestratorService:
             )
         if status == "success" and action == "delete_report" and isinstance(data, dict):
             report_id = data.get("report_id")
+            if is_arabic:
+                return f"تم حذف التقرير رقم {report_id} بنجاح."
             if is_english:
                 return f"The report with id {report_id} was deleted successfully."
             return f"Le rapport avec l'id {report_id} a ete supprime avec succes."
         if status == "success" and intent == "rapport":
+            if is_arabic:
+                return "تمت هيكلة التقرير بنجاح."
             if is_english:
                 return "The report was structured successfully."
             return "Le rapport a ete structure avec succes."
         if status == "not_found" and action == "delete_report" and isinstance(data, dict):
             report_id = data.get("report_id")
+            if is_arabic:
+                return f"لم يتم العثور على تقرير بالمعرف {report_id}."
             if is_english:
                 return f"No report was found with id {report_id}."
             return f"Aucun rapport n'a ete trouve avec l'id {report_id}."
         if status == "success" and intent == "publication" and isinstance(data, dict):
             publication_type = data.get("type_publication", "publication")
             occasion = data.get("occasion")
+            if is_arabic:
+                if occasion:
+                    return f"تم إنشاء منشور {publication_type} بنجاح للمناسبة {occasion}."
+                return f"تم إنشاء منشور {publication_type} بنجاح."
             if is_english:
                 if occasion:
                     return (
@@ -624,14 +688,26 @@ class OrchestratorService:
             response_text = data.get("response")
             if isinstance(response_text, str) and response_text.strip():
                 return response_text.strip()
+            if is_arabic:
+                return "تم إنجاز تحليل المنتجات بنجاح."
             if is_english:
                 return "The product analysis was completed successfully."
             return "L'analyse produit a ete realisee avec succes."
         if status == "needs_choice":
             if action == "query_database" and intent == "publication":
+                if is_arabic:
+                    return (
+                        "طلبك يتعلق بقاعدة بيانات المنشورات. "
+                        "حدد هل تريد الاستعلام عن الصور أم الفيديوهات أم الاثنين معا."
+                    )
                 return (
                     "Votre demande concerne la base des publications. "
                     "Precisez si vous voulez interroger les images, les videos, ou les deux."
+                )
+            if is_arabic:
+                return (
+                    "طلبك يتعلق بمنشور، لكن السياق غير مكتمل. "
+                    "حدد هل تريد المناسبة القادمة، أو فترة الامتحانات، أو مناسبة معينة."
                 )
             return (
                 "Votre demande concerne une publication, mais il manque le contexte. "
@@ -640,9 +716,13 @@ class OrchestratorService:
         if status == "query_rejected" and isinstance(data, dict):
             reason = str(data.get("reason", "")).strip()
             if reason:
+                if is_arabic:
+                    return f"تم رفض استعلام قاعدة البيانات: {reason}"
                 if is_english:
                     return f"The database query was rejected: {reason}"
                 return f"La requete BDD a ete refusee: {reason}"
+            if is_arabic:
+                return "تعذر تنفيذ استعلام قاعدة البيانات بشكل آمن."
             if is_english:
                 return "The database query could not be executed safely."
             return "La requete BDD n'a pas pu etre executee de maniere sure."
@@ -655,9 +735,16 @@ class OrchestratorService:
             if reason:
                 return reason
             if details:
+                if is_arabic:
+                    return f"فشل تنفيذ SQL: {details}"
                 if is_english:
                     return f"SQL execution failed: {details}"
                 return f"Echec d'execution SQL: {details}"
+            if is_arabic:
+                return (
+                    "قاعدة البيانات غير متاحة. تحقق من أن خادم قاعدة البيانات يعمل "
+                    "ومن صحة إعدادات الاتصال."
+                )
             if is_english:
                 return (
                     "The database is not accessible. Check that the database server "
@@ -669,9 +756,13 @@ class OrchestratorService:
             )
         if status == "missing_information":
             if action == "delete_report":
+                if is_arabic:
+                    return "معرف التقرير المراد حذفه مطلوب."
                 if is_english:
                     return "The report id to delete is required."
                 return "L'id du rapport a supprimer est requis."
+            if is_arabic:
+                return "تم فهم الطلب، لكن هناك معلومات ناقصة قبل المتابعة."
             if is_english:
                 return (
                     "The request was understood, but more information is needed before continuing."
@@ -684,14 +775,25 @@ class OrchestratorService:
                 media_type = str(data.get("media_type", "")).strip().lower()
                 generation_mode = str(data.get("generation_mode", "")).strip().lower()
                 if media_type == "video" and generation_mode in {"exam_period", "given_occasion"}:
+                    if is_arabic:
+                        return "إنشاء الفيديو مدعوم حاليا للمناسبة القادمة فقط."
                     return (
                         "La generation video n'est supportee pour le moment que pour la prochaine occasion."
                     )
+            if is_arabic:
+                return (
+                    "تم فهم الطلب كمنشور، لكن لم يتم تشغيل معالجة كاملة لهذه الحالة."
+                )
             return (
                 "La demande a ete comprise comme une publication, mais aucun traitement complet "
                 "n'a ete lance pour ce cas."
             )
         if status == "unsupported_request":
+            if is_arabic:
+                return (
+                    "لم أتمكن من تحديد ما إذا كان طلبك يتعلق بهيكلة تقرير "
+                    "أو بإنشاء منشور."
+                )
             if is_english:
                 return (
                     "I could not determine whether your request is about report structuring "
@@ -701,6 +803,8 @@ class OrchestratorService:
                 "Je n'ai pas pu determiner si votre demande concerne une structuration de rapport "
                 "ou une publication."
             )
+        if is_arabic:
+            return "تمت معالجة الطلب."
         if is_english:
             return "The processing was completed."
         return "Le traitement a ete realise."
@@ -713,25 +817,40 @@ class OrchestratorService:
         user_request: str = "",
     ) -> str:
         is_english = language == "English"
+        is_arabic = language == "Arabic"
         if not isinstance(data, dict):
+            if is_arabic:
+                return "تم تنفيذ استعلام قاعدة البيانات بنجاح."
             if is_english:
                 return "The database query was executed successfully."
             return "La requete sur la base de donnees a ete executee avec succes."
 
         row_count = data.get("row_count")
         if row_count == 0:
+            if is_arabic:
+                return "## نتائج قاعدة البيانات\n\nلم يتم العثور على أي نتيجة في قاعدة البيانات."
             if is_english:
                 return "## Database Results\n\nNo result was found in the database."
             return "## Resultats BDD\n\nAucun resultat n'a ete trouve dans la base de donnees."
 
         rows = data.get("rows")
         if not isinstance(row_count, int):
+            if is_arabic:
+                return "تم تنفيذ استعلام قاعدة البيانات بنجاح."
             if is_english:
                 return "The database query was executed successfully."
             return "La requete sur la base de donnees a ete executee avec succes."
 
         if isinstance(display, dict) and display.get("type") == "table":
             title = str(display.get("title", "")).strip()
+            if is_arabic:
+                heading = title or "نتائج قاعدة البيانات"
+                suffix = (
+                    "\n\nيتم عرض جزء فقط من النتائج في الجدول."
+                    if bool(data.get("truncated", False))
+                    else ""
+                )
+                return f"## {heading}\n\nوجدت {row_count} نتيجة في قاعدة البيانات.{suffix}"
             if is_english:
                 heading = title or "Database Results"
                 suffix = (
@@ -750,6 +869,8 @@ class OrchestratorService:
             return f"## {heading}\n\nJ'ai trouve {row_count} resultat(s) dans la base de donnees.{suffix}"
 
         if not isinstance(rows, list) or not rows:
+            if is_arabic:
+                return f"وجدت {row_count} نتيجة في قاعدة البيانات."
             if is_english:
                 return f"I found {row_count} result(s) in the database."
             return f"J'ai trouve {row_count} resultat(s) dans la base de donnees."
@@ -762,17 +883,25 @@ class OrchestratorService:
         ]
         rendered_rows = [row for row in rendered_rows if row]
         if not rendered_rows:
+            if is_arabic:
+                return f"وجدت {row_count} نتيجة في قاعدة البيانات."
             if is_english:
                 return f"I found {row_count} result(s) in the database."
             return f"J'ai trouve {row_count} resultat(s) dans la base de donnees."
 
         intro = (
-            f"I found {row_count} result(s) in the database:"
-            if is_english
-            else f"J'ai trouve {row_count} resultat(s) dans la base de donnees :"
+            f"وجدت {row_count} نتيجة في قاعدة البيانات:"
+            if is_arabic
+            else (
+                f"I found {row_count} result(s) in the database:"
+                if is_english
+                else f"J'ai trouve {row_count} resultat(s) dans la base de donnees :"
+            )
         )
         body = "\n".join(f"- {row}" for row in rendered_rows)
         if bool(data.get("truncated", False)) or row_count > len(displayed_rows):
+            if is_arabic:
+                return f"{intro}\n{body}\n- ... نتائج أخرى غير معروضة"
             if is_english:
                 return f"{intro}\n{body}\n- ... other results not displayed"
             return f"{intro}\n{body}\n- ... autres resultats non affiches"
@@ -1062,6 +1191,8 @@ class OrchestratorService:
 
     @staticmethod
     def _display_label_for_column(column: str) -> str:
+        # Display labels are mostly used by explicit tables; free-text answers are
+        # handled by the explanatory message/fallback language logic.
         labels = {
             "id": "Tache",
             "intent": "Type",
@@ -1085,6 +1216,30 @@ class OrchestratorService:
     @staticmethod
     def _build_display_title(user_request: str, table_name: str) -> str:
         normalized = OrchestratorService._normalize_text(user_request)
+        language = OrchestratorService._detect_response_language(user_request)
+        if language == "Arabic":
+            titles = {
+                "tasks": "قائمة مهامك",
+                "messages": "سجل الرسائل",
+                "conversations": "قائمة المحادثات",
+                "structured_reports": "التقارير الموجودة",
+                "generated_images": "الصور الموجودة",
+                "generated_videos": "الفيديوهات الموجودة",
+                "conversation": "النتائج",
+            }
+            return titles.get(table_name, "النتائج")
+        if language == "English":
+            titles = {
+                "tasks": "Your tasks",
+                "messages": "Message history",
+                "conversations": "Your conversations",
+                "structured_reports": "Reports found",
+                "generated_images": "Images found",
+                "generated_videos": "Videos found",
+                "conversation": "Results",
+            }
+            return titles.get(table_name, "Results")
+
         if "tableau" in normalized or "table" in normalized:
             if table_name == "tasks":
                 return "Liste de vos taches"
@@ -1522,6 +1677,7 @@ class OrchestratorService:
             return {
                 "intent": "publication",
                 "action": "query_database",
+                "response_language": OrchestratorService._detect_response_language(user_request),
                 "media_scope": media_scope,
                 "db_scope": {"tables": db_scope_tables},
                 "user_question": user_request.strip(),
@@ -1558,6 +1714,7 @@ class OrchestratorService:
         return {
             "intent": "publication",
             "action": "generate_publication",
+            "response_language": OrchestratorService._detect_response_language(user_request),
             "media_type": media_type,
             "generation_mode": generation_mode,
             "occasion": occasion if generation_mode == "given_occasion" else None,
@@ -1567,7 +1724,12 @@ class OrchestratorService:
     @staticmethod
     def _try_local_report_classification(user_request: str) -> dict[str, Any] | None:
         normalized = OrchestratorService._normalize_text(user_request)
-        if "rapport" not in normalized and "report" not in normalized:
+        has_report_reference = (
+            "rapport" in normalized
+            or "report" in normalized
+            or any(keyword in normalized for keyword in ("تقرير", "تقارير", "التقرير", "التقارير"))
+        )
+        if not has_report_reference:
             return None
 
         publication_keywords = (
@@ -1589,6 +1751,7 @@ class OrchestratorService:
             return {
                 "intent": "rapport",
                 "action": "structure_report",
+                "response_language": OrchestratorService._detect_response_language(user_request),
                 "rapport": OrchestratorService._extract_inline_report_text(user_request),
             }
 
@@ -1596,6 +1759,7 @@ class OrchestratorService:
             return {
                 "intent": "rapport",
                 "action": "query_database",
+                "response_language": OrchestratorService._detect_response_language(user_request),
                 "db_scope": {"tables": ["structured_reports"]},
                 "user_question": user_request.strip(),
                 "query_kind": OrchestratorService._infer_query_kind(normalized),
@@ -1611,6 +1775,7 @@ class OrchestratorService:
         return {
             "intent": "rapport",
             "action": "structure_report",
+            "response_language": OrchestratorService._detect_response_language(user_request),
             "rapport": None,
         }
 
@@ -1633,6 +1798,7 @@ class OrchestratorService:
         return {
             "intent": "rapport",
             "action": "delete_report",
+            "response_language": OrchestratorService._detect_response_language(user_request),
             "report_id": report_id,
         }
 
@@ -1737,6 +1903,9 @@ class OrchestratorService:
         if any(keyword in normalized for keyword in explicit_db_keywords):
             return True
 
+        if any(keyword in normalized for keyword in ("كل التقارير", "جميع التقارير", "اعطني التقارير", "اعطني كل التقارير", "قائمة التقارير")):
+            return True
+
         if re.search(
             r"\b(give|list|show|get|display|fetch)\b.*\b(all|existing|exist|reports?|rapports?)\b",
             normalized,
@@ -1825,10 +1994,65 @@ class OrchestratorService:
         return "listing"
 
     @staticmethod
+    def _with_response_language(
+        classification_result: dict[str, Any] | list[Any],
+        user_request: str,
+    ) -> dict[str, Any] | list[Any]:
+        if not isinstance(classification_result, dict):
+            return classification_result
+
+        normalized_language = OrchestratorService._normalize_response_language(
+            classification_result.get("response_language")
+        )
+        if not normalized_language:
+            normalized_language = OrchestratorService._detect_response_language(user_request)
+
+        enriched = dict(classification_result)
+        enriched["response_language"] = normalized_language
+        return enriched
+
+    @staticmethod
+    def _resolve_response_language(
+        user_request: str,
+        payload: dict[str, Any] | None = None,
+    ) -> str:
+        if isinstance(payload, dict):
+            normalized_language = OrchestratorService._normalize_response_language(
+                payload.get("response_language")
+            )
+            if normalized_language:
+                return normalized_language
+        return OrchestratorService._detect_response_language(user_request)
+
+    @staticmethod
+    def _normalize_response_language(value: Any) -> str | None:
+        normalized = str(value or "").strip().lower()
+        if not normalized:
+            return None
+        if normalized in {"arabic", "arabe", "العربية", "عربي"}:
+            return "Arabic"
+        if normalized in {"french", "francais", "français", "fr"}:
+            return "French"
+        if normalized in {"english", "anglais", "en"}:
+            return "English"
+        return None
+
+    @staticmethod
     def _detect_response_language(user_request: str) -> str:
         normalized = OrchestratorService._normalize_text(user_request)
+        if re.search(r"\b(in english|answer in english|respond in english)\b", normalized):
+            return "English"
+        if re.search(r"\b(en francais|en français|reponds en francais|repond en francais|réponds en français)\b", normalized):
+            return "French"
+        if any(keyword in normalized for keyword in ("بالعربي", "بالعربية", "باللغة العربية", "عربي", "العربية")):
+            return "Arabic"
+        if re.search(r"[\u0600-\u06FF]", str(user_request)):
+            return "Arabic"
+
         english_markers = (
             "give",
+            "me",
+            "the",
             "i",
             "want",
             "show",

@@ -1,8 +1,13 @@
-import os
 from pathlib import Path
 from typing import Any
 
 from google import genai
+
+from gemini_keyring import (
+    GeminiKeyConfigError,
+    build_client as build_shared_gemini_client,
+    get_api_key as get_shared_gemini_api_key,
+)
 
 
 DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
@@ -24,16 +29,19 @@ class PublicationOpenAIConfigError(RuntimeError):
 
 
 def get_gemini_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or not api_key.strip():
+    try:
+        return get_shared_gemini_api_key()
+    except GeminiKeyConfigError as exc:
         raise PublicationGeminiConfigError(
-            "La variable d'environnement GEMINI_API_KEY est absente ou vide."
-        )
-    return api_key.strip()
+            str(exc)
+        ) from exc
 
 
 def build_gemini_client() -> genai.Client:
-    return genai.Client(api_key=get_gemini_api_key())
+    try:
+        return build_shared_gemini_client()
+    except GeminiKeyConfigError as exc:
+        raise PublicationGeminiConfigError(str(exc)) from exc
 
 
 def get_openai_api_key() -> str:

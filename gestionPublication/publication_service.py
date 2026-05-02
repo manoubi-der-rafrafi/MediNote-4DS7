@@ -19,11 +19,14 @@ from .generation_config import (
     VIDEO_SECONDS,
     VIDEO_SIZE,
     VIDEO_STATUS_POLL_SECONDS,
-    build_gemini_client,
     build_video_prompt,
     get_openai_api_key,
 )
 from .occasion_service import OccasionService, OccasionServiceError
+from gemini_keyring import (
+    GeminiKeyConfigError,
+    generate_content_with_key_rotation,
+)
 
 
 class PublicationConfigError(RuntimeError):
@@ -111,15 +114,10 @@ class PublicationService:
         self,
         publication_context: dict[str, Any],
     ) -> dict[str, str]:
-        try:
-            client = build_gemini_client()
-        except PublicationGeminiConfigError as exc:
-            raise PublicationConfigError(str(exc)) from exc
-
         prompt = build_video_prompt(publication_context)
 
         try:
-            response = client.models.generate_content(
+            response = generate_content_with_key_rotation(
                 model=self.model_name,
                 contents=prompt,
                 config={
@@ -127,6 +125,8 @@ class PublicationService:
                     "response_mime_type": "application/json",
                 },
             )
+        except (PublicationGeminiConfigError, GeminiKeyConfigError) as exc:
+            raise PublicationConfigError(str(exc)) from exc
         except Exception as exc:
             raise PublicationRequestError(str(exc)) from exc
 

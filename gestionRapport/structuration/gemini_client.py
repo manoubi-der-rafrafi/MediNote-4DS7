@@ -1,9 +1,15 @@
-import os
-
 from google import genai
 
+from gemini_keyring import (
+    DEFAULT_MODEL_NAME as SHARED_DEFAULT_MODEL_NAME,
+    GeminiKeyConfigError,
+    build_client as build_shared_client,
+    generate_content_with_key_rotation as generate_shared_content_with_key_rotation,
+    get_api_key as get_shared_api_key,
+)
+from typing import Any
 
-DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
+DEFAULT_MODEL_NAME = SHARED_DEFAULT_MODEL_NAME
 
 
 class StructurationGeminiConfigError(RuntimeError):
@@ -11,13 +17,23 @@ class StructurationGeminiConfigError(RuntimeError):
 
 
 def get_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or not api_key.strip():
+    try:
+        return get_shared_api_key()
+    except GeminiKeyConfigError as exc:
         raise StructurationGeminiConfigError(
-            "La variable d'environnement GEMINI_API_KEY est absente ou vide."
-        )
-    return api_key.strip()
+            str(exc)
+        ) from exc
 
 
 def build_client() -> genai.Client:
-    return genai.Client(api_key=get_api_key())
+    try:
+        return build_shared_client()
+    except GeminiKeyConfigError as exc:
+        raise StructurationGeminiConfigError(str(exc)) from exc
+
+
+def generate_content_with_key_rotation(**kwargs: Any) -> Any:
+    try:
+        return generate_shared_content_with_key_rotation(**kwargs)
+    except GeminiKeyConfigError as exc:
+        raise StructurationGeminiConfigError(str(exc)) from exc

@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from .gemini_client import (
     DEFAULT_MODEL_NAME,
     StructurationGeminiConfigError,
-    build_client,
+    generate_content_with_key_rotation,
 )
 from .heuristics import classify_point_fort_locally
 from .prompts import SYSTEM_PROMPT, build_user_prompt
@@ -33,12 +33,7 @@ class StructurationRapportService:
 
     def handle(self, text_brut: str) -> PointFortStructured:
         try:
-            client = build_client()
-        except StructurationGeminiConfigError as exc:
-            raise StructurationConfigError(str(exc)) from exc
-
-        try:
-            response = client.models.generate_content(
+            response = generate_content_with_key_rotation(
                 model=self.model_name,
                 contents=[
                     {"role": "user", "parts": [{"text": SYSTEM_PROMPT}]},
@@ -50,6 +45,8 @@ class StructurationRapportService:
                     "temperature": 0,
                 },
             )
+        except StructurationGeminiConfigError as exc:
+            raise StructurationConfigError(str(exc)) from exc
         except Exception as exc:
             raise StructurationRequestError(str(exc)) from exc
 
