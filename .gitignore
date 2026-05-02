@@ -60,8 +60,6 @@ dist/
 Thumbs.db
 .claude/
 
-# ─── Mobile (has own git repo — push separately) ─────────────────────────────
-mobile/
 
 # ─── Mobile build artifacts ──────────────────────────────────────────────────
 mobile/android/.gradle/

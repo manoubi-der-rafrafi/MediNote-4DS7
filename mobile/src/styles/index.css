@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand: #2E7D4F;
+    --brand-2: #13452B;
+    --brand-soft: #DEEFE2;
+    --bg: #FAFAF7;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b6b68;
+    --border: #E6E4DE;
+    --pos: #4A7C59;
+    --neg: #B94A48;
+    --warn: #B8860B;
+    --radius: 14px;
+    --nav-h: 64px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    font-size: 14px;
+    background-color: var(--bg);
+    color: var(--text);
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #root {
+    width: 100%;
+    max-width: 390px;
+    margin: 0 auto;
+    min-height: 100vh;
+    position: relative;
+  }
+}
+
+@layer utilities {
+  .content-auto {
+    content-visibility: auto;
+  }
+  .tab-fade-enter {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  .tab-fade-active {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 200ms ease-out, transform 200ms ease-out;
+  }
+  .blend-difference {
+    mix-blend-mode: difference;
+  }
+}
