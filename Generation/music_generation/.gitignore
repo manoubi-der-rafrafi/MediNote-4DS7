@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+
+# Keep generated reports/audio local unless you intentionally want to version them.
+outputs/audio/
+outputs/generated_music_metadata.csv
+outputs/evaluation_report.csv
+

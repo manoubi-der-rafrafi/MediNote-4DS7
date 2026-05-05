@@ -1,0 +1,31 @@
+occasion_type,holiday_name,product_theme,target_mood,instruments,tempo,genre,prompt_style
+Religious,Ramadan,digestion,calm,"oud, ney, soft percussion",slow,oriental ambient,"calm oriental background music with oud, ney and soft percussion for Ramadan health awareness"
+Religious,Ramadan,wellness,spiritual,"oud, ney, warm pads",slow,spiritual ambient,peaceful spiritual oriental music with oud and warm pads for Ramadan wellness content
+Religious,Eid al-Fitr,wellness,happy,"oud, darbuka, claps",medium,festive oriental,"uplifting festive oriental background music with oud, darbuka and hand claps for Eid wellness campaign"
+Religious,Eid al-Adha,family health,warm,"oud, strings, soft percussion",medium,cinematic oriental,warm cinematic oriental music with oud and strings for Eid family health social media post
+Religious,Mawlid,awareness,spiritual,"oud, ney, choir pads",slow,islamic ambient,"peaceful Islamic ambient background with oud, ney and soft choir pads for Mawlid awareness post"
+National,Independence Day Tunisia,energy,proud,"brass, drums, strings",medium,patriotic cinematic,"proud cinematic music with brass, drums and strings for Tunisia Independence Day campaign"
+National,Republic Day Tunisia,wellness,inspiring,"piano, strings, light drums",medium,inspirational cinematic,inspiring cinematic background music with piano and strings for national wellness message
+National,Evacuation Day Tunisia,awareness,respectful,"strings, frame drum, low pads",slow,solemn cinematic,respectful solemn cinematic background with strings and soft percussion for remembrance content
+International,New Year's Day,energy,hopeful,"piano, synth, soft drums",medium,pop cinematic,"hopeful cinematic pop background music with piano, synth and soft drums for New Year campaign"
+International,New Year's Eve,beauty,celebratory,"synth, claps, electronic drums",fast,electro pop,celebratory upbeat electro pop music for a social media countdown post
+International,Valentine's Day,skincare,romantic,"piano, guitar, strings",slow,soft pop,"soft romantic pop background with piano, guitar and strings for skincare promotion"
+International,International Women's Day,wellness,empowering,"piano, strings, modern drums",medium,empowering pop,empowering modern pop background music with piano and strings for women's wellness campaign
+Health,World Health Day,wellness,trustful,"piano, pads, light percussion",slow,corporate ambient,"clean positive health awareness background music with piano, pads and light percussion"
+Health,World Mental Health Day,mental health,calm,"piano, ambient pads, soft textures",slow,meditative ambient,gentle meditative ambient music with piano and soft pads for mental health awareness
+Health,Breast Cancer Awareness Month,awareness,supportive,"piano, strings, soft percussion",slow,emotional cinematic,supportive emotional cinematic background with piano and strings for awareness campaign
+Health,Diabetes Awareness Day,prevention,informative,"marimba, piano, light percussion",medium,corporate health,clear optimistic corporate health background music for prevention awareness video
+Health,Heart Health Day,cardio health,positive,"piano, guitar, light drums",medium,acoustic pop,positive acoustic pop background music for heart health social media content
+Seasonal,Summer Campaign,hydration,fresh,"guitar, ukulele, light percussion",medium,tropical acoustic,fresh tropical acoustic background music with guitar and light percussion for summer hydration campaign
+Seasonal,Back to School,vitamins,energetic,"xylophone, claps, light drums",fast,playful pop,playful energetic pop music with xylophone and claps for back to school vitamins campaign
+Seasonal,Winter Campaign,immunity,cozy,"piano, bells, warm pads",slow,cozy ambient,cozy warm ambient background music with piano and soft bells for winter immunity campaign
+Seasonal,Spring Campaign,allergy care,fresh,"flute, guitar, light percussion",medium,fresh acoustic,fresh acoustic music with flute and guitar for spring allergy care social media post
+Commercial,Product Launch,new product,exciting,"synth, drums, bass",fast,modern corporate,modern exciting corporate music with synth and drums for product launch reveal
+Commercial,Flash Sale,promotion,urgent,"electronic drums, bass, claps",fast,upbeat electronic,upbeat urgent electronic background music with drums and claps for flash sale announcement
+Commercial,Brand Awareness,general health,trustful,"piano, pads, soft drums",medium,corporate ambient,trustful clean corporate ambient music with piano and soft drums for brand awareness
+Commercial,Customer Testimonial,wellness,warm,"piano, acoustic guitar, pads",slow,warm acoustic,warm acoustic background music with piano and guitar for customer testimonial video
+Social,Mother's Day,family wellness,tender,"piano, strings, acoustic guitar",slow,emotional acoustic,tender emotional acoustic background music with piano and strings for Mother's Day wellness post
+Social,Father's Day,family health,warm,"guitar, piano, soft drums",medium,acoustic pop,warm acoustic pop music with guitar and piano for Father's Day health campaign
+Social,Children's Day,kids health,playful,"xylophone, ukulele, claps",fast,kids playful,"playful cheerful music with xylophone, ukulele and claps for kids health content"
+Social,Pharmacist Day,professional health,respectful,"piano, strings, light percussion",medium,professional corporate,respectful professional corporate music with piano and strings for pharmacist appreciation post
+Social,Doctor's Day,medical awareness,trustful,"piano, pads, strings",slow,medical corporate,trustful medical corporate background music with piano and soft strings for Doctor's Day post
