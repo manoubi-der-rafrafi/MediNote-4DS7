@@ -115,6 +115,7 @@ button {
 }
 
 .primary-button,
+.secondary-button,
 .send-button,
 .icon-button,
 .danger-button {
@@ -132,6 +133,12 @@ button {
 .send-button {
   background: var(--green);
   color: white;
+}
+
+.secondary-button {
+  background: var(--panel-strong);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 .primary-button {
@@ -814,6 +821,29 @@ button {
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
+}
+
+.message-audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.message-audio-controls .danger-button,
+.message-audio-controls .icon-button {
+  width: auto;
+}
+
+.message-asset-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.message-asset-meta.is-error {
+  color: #a33b25;
 }
 
 .spin {

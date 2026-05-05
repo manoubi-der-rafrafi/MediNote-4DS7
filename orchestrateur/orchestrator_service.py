@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from typing import Any
 
 from hashem_integration import HashemChatService, HashemIntegrationError
@@ -28,6 +29,7 @@ from gestionPublication import (
 )
 from gestionProduit import ProductService, ProductServiceError
 from gestionRapport.structuration import StructurationRapportService
+from musicRecommendation import MusicRecommendationError, MusicRecommendationService
 from .gemini_client import (
     DEFAULT_MODEL_NAME,
     GeminiClientConfigError,
@@ -54,6 +56,10 @@ class OrchestratorResponseError(RuntimeError):
     pass
 
 
+class OrchestratorExplanationError(RuntimeError):
+    pass
+
+
 class OrchestratorMissingDataError(RuntimeError):
     pass
 
@@ -73,6 +79,7 @@ class OrchestratorService:
         self.report_service = StructurationRapportService()
         self.publication_service = PublicationService()
         self.image_generation_service = ImageGenerationService()
+        self.music_recommendation_service = MusicRecommendationService()
         self.database_query_service = DatabaseQueryService(model_name=model_name)
         self.product_service = ProductService()
         self.conversation_task_service = ConversationTaskService()
@@ -260,6 +267,7 @@ class OrchestratorService:
             DatabaseQueryExecutionError,
             DatabaseQueryRequestError,
             DatabaseQueryResponseError,
+            OrchestratorExplanationError,
             ImageGenerationConfigError,
             ImageGenerationContextError,
             ImageGenerationPersistenceError,
@@ -269,6 +277,7 @@ class OrchestratorService:
             PublicationPersistenceError,
             PublicationRequestError,
             PublicationResponseError,
+            MusicRecommendationError,
             ProductServiceError,
             HashemIntegrationError,
         ) as exc:
@@ -279,6 +288,8 @@ class OrchestratorService:
             if isinstance(exc, DatabaseQueryRequestError):
                 raise OrchestratorRequestError(str(exc)) from exc
             if isinstance(exc, DatabaseQueryResponseError):
+                raise OrchestratorResponseError(str(exc)) from exc
+            if isinstance(exc, OrchestratorExplanationError):
                 raise OrchestratorResponseError(str(exc)) from exc
             if isinstance(exc, HashemIntegrationError):
                 raise OrchestratorProcessingError(str(exc)) from exc
@@ -455,6 +466,13 @@ class OrchestratorService:
 
         intent = parsed_response.get("intent")
         action = self._infer_action(parsed_response)
+        if intent == "publication":
+            print(
+                "[DISPATCH] intent=publication "
+                f"action={action} "
+                f"media_type={str(parsed_response.get('media_type', '')).strip().lower()!r} "
+                f"generation_mode={str(parsed_response.get('generation_mode', '')).strip().lower()!r}"
+            )
         if action == "query_database":
             return self.database_query_service.handle(
                 user_request,
@@ -489,15 +507,23 @@ class OrchestratorService:
             media_type = str(parsed_response.get("media_type", "")).strip().lower()
             generation_mode = str(parsed_response.get("generation_mode", "")).strip().lower()
 
+            if action == "recommend_music":
+                print("[DISPATCH] service=music_recommendation")
+                return self.music_recommendation_service.handle(parsed_response)
+
             if media_type == "image" and generation_mode in {
                 "next_occasion",
                 "exam_period",
                 "given_occasion",
             }:
+                print("[DISPATCH] service=image_generation")
                 return self.image_generation_service.handle(parsed_response)
 
             if media_type == "video" and generation_mode == "next_occasion":
+                print("[DISPATCH] service=video_generation")
                 return self.publication_service.handle(parsed_response)
+
+            print("[DISPATCH] service=none reason=unsupported_publication_payload")
 
         return parsed_response
 
@@ -557,15 +583,19 @@ class OrchestratorService:
                 media_type = str(dispatched_result.get("media_type", "")).strip().lower()
                 generation_mode = str(dispatched_result.get("generation_mode", "")).strip().lower()
 
-                if media_type not in {"image", "video"} and generation_mode not in {"", "missing"}:
+                if action == "recommend_music" and generation_mode in {"", "missing"}:
+                    status = "needs_choice"
+                    choices = ["next_occasion", "exam_period", "given_occasion"]
+                    missing_fields = ["generation_mode"]
+                elif media_type not in {"image", "video", "audio"} and generation_mode not in {"", "missing"}:
                     status = "missing_information"
-                    choices = ["image", "video"]
+                    choices = ["image", "video", "audio"]
                     missing_fields = ["media_type"]
-                elif media_type not in {"image", "video"} and generation_mode in {"", "missing"}:
+                elif media_type not in {"image", "video", "audio"} and generation_mode in {"", "missing"}:
                     status = "missing_information"
-                    choices = ["image", "video"]
+                    choices = ["image", "video", "audio"]
                     missing_fields = ["media_type", "generation_mode"]
-                elif media_type in {"image", "video"} and generation_mode in {"", "missing"}:
+                elif media_type in {"image", "video", "audio"} and generation_mode in {"", "missing"}:
                     status = "needs_choice"
                     choices = ["next_occasion", "exam_period", "given_occasion"]
                     missing_fields = ["generation_mode"]
@@ -619,6 +649,17 @@ class OrchestratorService:
         user_request: str,
         response_payload: dict[str, Any],
     ) -> str:
+        if (
+            response_payload.get("status") == "success"
+            and response_payload.get("action") == "recommend_music"
+            and isinstance(response_payload.get("data"), dict)
+        ):
+            language = self._resolve_response_language(user_request, response_payload)
+            return self._build_music_recommendation_message(
+                response_payload["data"],
+                language,
+            )
+
         if response_payload.get("intent") == "produit":
             data = response_payload.get("data")
             if isinstance(data, dict):
@@ -626,87 +667,101 @@ class OrchestratorService:
                 if isinstance(response_text, str) and response_text.strip():
                     return response_text.strip()
 
-        try:
-            if client is not None:
-                response = client.models.generate_content(
-                    model=self.model_name,
-                    contents=[
-                        {
-                            "role": "user",
-                            "parts": [{"text": ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT}],
-                        },
-                        {
-                            "role": "user",
-                            "parts": [
-                                {
-                                    "text": build_orchestrator_explanation_user_prompt(
-                                        user_request,
-                                        response_payload,
-                                        response_language=self._resolve_response_language(
-                                            user_request,
-                                            response_payload,
-                                        ),
-                                    )
-                                }
-                            ],
-                        },
-                    ],
-                    config={
-                        "response_mime_type": "application/json",
-                        "temperature": 0,
-                    },
+        last_error: Exception | None = None
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                print(
+                    "[RESPONSE] methode=gemini_explanation "
+                    f"status=start attempt={attempt}/{max_attempts}"
                 )
-            else:
-                response = generate_content_with_key_rotation(
-                    model=self.model_name,
-                    contents=[
-                        {
-                            "role": "user",
-                            "parts": [{"text": ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT}],
-                        },
-                        {
-                            "role": "user",
-                            "parts": [
-                                {
-                                    "text": build_orchestrator_explanation_user_prompt(
-                                        user_request,
-                                        response_payload,
-                                        response_language=self._resolve_response_language(
-                                            user_request,
-                                            response_payload,
-                                        ),
-                                    )
-                                }
-                            ],
-                        },
-                    ],
-                    config={
-                        "response_mime_type": "application/json",
-                        "temperature": 0,
-                    },
+                response = self._request_gemini_explanation(
+                    client=client,
+                    user_request=user_request,
+                    response_payload=response_payload,
                 )
+                message = self._extract_explanation_message(response)
+                print(
+                    "[RESPONSE] methode=gemini_explanation "
+                    f"status=success attempt={attempt}"
+                )
+                return message
+            except Exception as exc:
+                last_error = exc
+                print(
+                    "[RESPONSE] methode=gemini_explanation "
+                    f"status=failed attempt={attempt}/{max_attempts} "
+                    f"reason={exc.__class__.__name__}: {exc}"
+                )
+                if attempt < max_attempts:
+                    time.sleep(0.8 * attempt)
 
-            parsed = getattr(response, "parsed", None)
-            if isinstance(parsed, dict) and isinstance(parsed.get("message"), str):
-                return parsed["message"].strip()
-            if isinstance(parsed, str):
-                payload = self._parse_json(parsed)
-                if isinstance(payload, dict) and isinstance(payload.get("message"), str):
-                    return payload["message"].strip()
+        raise OrchestratorExplanationError(
+            "Gemini n'a pas pu generer la reponse finale apres "
+            f"{max_attempts} tentatives. Derniere erreur: {last_error}"
+        ) from last_error
 
-            response_text = getattr(response, "text", "")
-            payload = self._parse_json(response_text)
-            if isinstance(payload, dict) and isinstance(payload.get("message"), str):
-                return payload["message"].strip()
-        except Exception as exc:
-            print(
-                "[RESPONSE] methode=gemini_explanation "
-                f"status=failed reason={exc.__class__.__name__}: {exc}"
-            )
-
-        return self._build_fallback_message(
+    def _request_gemini_explanation(
+        self,
+        client: Any | None,
+        user_request: str,
+        response_payload: dict[str, Any],
+    ) -> Any:
+        explanation_prompt = build_orchestrator_explanation_user_prompt(
+            user_request,
             response_payload,
-            language=self._resolve_response_language(user_request, response_payload),
+            response_language=self._resolve_response_language(
+                user_request,
+                response_payload,
+            ),
+        )
+        contents = [
+            {
+                "role": "user",
+                "parts": [{"text": ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT}],
+            },
+            {
+                "role": "user",
+                "parts": [{"text": explanation_prompt}],
+            },
+        ]
+        config = {
+            "response_mime_type": "application/json",
+            "temperature": 0,
+        }
+        if client is not None:
+            return client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=config,
+            )
+        return generate_content_with_key_rotation(
+            model=self.model_name,
+            contents=contents,
+            config=config,
+        )
+
+    def _extract_explanation_message(self, response: Any) -> str:
+        parsed = getattr(response, "parsed", None)
+        if isinstance(parsed, dict) and isinstance(parsed.get("message"), str):
+            message = parsed["message"].strip()
+            if message:
+                return message
+        if isinstance(parsed, str):
+            payload = self._parse_json(parsed)
+            if isinstance(payload, dict) and isinstance(payload.get("message"), str):
+                message = payload["message"].strip()
+                if message:
+                    return message
+
+        response_text = getattr(response, "text", "")
+        payload = self._parse_json(response_text)
+        if isinstance(payload, dict) and isinstance(payload.get("message"), str):
+            message = payload["message"].strip()
+            if message:
+                return message
+        raise OrchestratorExplanationError(
+            "La reponse Gemini finale ne contient pas le champ JSON `message`."
         )
 
     @staticmethod
@@ -728,6 +783,8 @@ class OrchestratorService:
                 language=language,
                 user_request=str(response_payload.get("_user_request", "")),
             )
+        if status == "success" and action == "recommend_music" and isinstance(data, dict):
+            return OrchestratorService._build_music_recommendation_message(data, language)
         if status == "success" and action == "delete_report" and isinstance(data, dict):
             report_id = data.get("report_id")
             if is_arabic:
@@ -751,6 +808,13 @@ class OrchestratorService:
         if status == "success" and intent == "publication" and isinstance(data, dict):
             publication_type = data.get("type_publication", "publication")
             occasion = data.get("occasion")
+            audio_status = str(data.get("audio_generation_status", "")).strip()
+            audio_error = str(data.get("audio_error", "")).strip()
+            french_audio_suffix = ""
+            english_audio_suffix = ""
+            if audio_status and audio_status != "audio_generated":
+                french_audio_suffix = f" Audio non genere: {audio_error or audio_status}."
+                english_audio_suffix = f" Audio was not generated: {audio_error or audio_status}."
             if is_arabic:
                 if occasion:
                     return f"تم إنشاء منشور {publication_type} بنجاح للمناسبة {occasion}."
@@ -760,14 +824,16 @@ class OrchestratorService:
                     return (
                         f"The {publication_type} publication was generated successfully "
                         f"for {occasion}."
+                        f"{english_audio_suffix}"
                     )
-                return f"The {publication_type} publication was generated successfully."
+                return f"The {publication_type} publication was generated successfully.{english_audio_suffix}"
             if occasion:
                 return (
                     f"La publication {publication_type} a ete generee avec succes "
                     f"pour l'occasion {occasion}."
+                    f"{french_audio_suffix}"
                 )
-            return f"La publication {publication_type} a ete generee avec succes."
+            return f"La publication {publication_type} a ete generee avec succes.{french_audio_suffix}"
         if status == "success" and intent == "produit" and isinstance(data, dict):
             response_text = data.get("response")
             if isinstance(response_text, str) and response_text.strip():
@@ -1251,6 +1317,42 @@ class OrchestratorService:
         if isinstance(display, dict) and display.get("type") == "table":
             message = cls._strip_markdown_tables(message)
         return message.strip()
+
+    @staticmethod
+    def _build_music_recommendation_message(
+        data: dict[str, Any],
+        language: str | None = None,
+    ) -> str:
+        recommendations = data.get("recommendations", [])
+        occasion = str(data.get("occasion", "")).strip()
+        is_english = language == "English"
+        is_arabic = language == "Arabic"
+
+        if not isinstance(recommendations, list) or not recommendations:
+            if is_arabic:
+                return "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ ØªÙˆØµÙŠØ§Øª Ù…ÙˆØ³ÙŠÙ‚ÙŠØ© Ù„Ù‡Ø°Ù‡ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨Ø©."
+            if is_english:
+                return "No music recommendations were found for this occasion."
+            return "Aucune recommandation musicale n'a ete trouvee pour cette occasion."
+
+        if is_arabic:
+            intro = f"Ø£ÙØ¶Ù„ 5 ØªÙˆØµÙŠØ§Øª Ù…ÙˆØ³ÙŠÙ‚ÙŠØ© Ù„Ù„Ù…Ù†Ø§Ø³Ø¨Ø© {occasion}:"
+        elif is_english:
+            intro = f"Top 5 music recommendations for {occasion}:"
+        else:
+            intro = f"Top 5 recommandations musicales pour {occasion} :"
+
+        lines = [intro, ""]
+        for item in recommendations[:5]:
+            rank = int(item.get("rank", 0) or 0)
+            title = str(item.get("title", "")).strip() or "Sans titre"
+            artist = str(item.get("artist", "")).strip() or "Inconnu"
+            url = str(item.get("url", "")).strip() or "URL indisponible"
+            score = float(item.get("final_score", 0.0) or 0.0)
+            lines.append(
+                f"{rank}. {title} | artist={artist} | score={score:.4f} | url={url}"
+            )
+        return "\n".join(lines).strip()
 
     @staticmethod
     def _strip_markdown_tables(message: str) -> str:
@@ -1801,6 +1903,68 @@ class OrchestratorService:
         }
 
     @staticmethod
+    def _looks_like_music_recommendation_request(normalized: str) -> bool:
+        recommendation_markers = (
+            "recommande",
+            "recommandation",
+            "suggest",
+            "suggestion",
+            "propose",
+            "recommend",
+            "top 5",
+            "top5",
+            "playlist",
+        )
+        audio_markers = (
+            "musique",
+            "music",
+            "audio",
+            "song",
+            "songs",
+            "soundtrack",
+            "fond sonore",
+            "background music",
+            "track",
+            "tracks",
+        )
+        return (
+            any(marker in normalized for marker in audio_markers)
+            and any(marker in normalized for marker in recommendation_markers)
+        )
+
+    @staticmethod
+    def _try_local_music_recommendation_classification(user_request: str) -> dict[str, Any] | None:
+        normalized = OrchestratorService._normalize_text(user_request)
+        if not OrchestratorService._looks_like_music_recommendation_request(normalized):
+            return None
+
+        generation_mode = "missing"
+        if OrchestratorService._looks_like_next_occasion_request(normalized):
+            generation_mode = "next_occasion"
+        elif any(
+            keyword in normalized
+            for keyword in ("examen", "examens", "exam", "bac", "revision", "rÃ©vision")
+        ):
+            generation_mode = "exam_period"
+        else:
+            occasion = OrchestratorService._extract_occasion_fragment(user_request)
+            if occasion:
+                generation_mode = "given_occasion"
+            else:
+                occasion = None
+
+        return {
+            "intent": "publication",
+            "action": "recommend_music",
+            "response_language": OrchestratorService._detect_response_language(user_request),
+            "media_type": "audio",
+            "generation_mode": generation_mode,
+            "occasion": occasion if generation_mode == "given_occasion" else None,
+            "date": None,
+            "top_k": 5,
+        }
+
+    @staticmethod
     def _try_local_report_classification(user_request: str) -> dict[str, Any] | None:
         normalized = OrchestratorService._normalize_text(user_request)
         has_report_reference = (
@@ -2014,6 +2178,10 @@ class OrchestratorService:
     def _looks_like_publication_database_query(normalized: str) -> bool:
         explicit_db_keywords = (
             "bdd",
+            " db",
+            "db ",
+            "from db",
+            "from the db",
             "base de donnees",
             "base de donnee",
             "database",
@@ -2026,7 +2194,7 @@ class OrchestratorService:
 
         return bool(
             re.search(
-                r"\b(combien|liste|lister|quels|quelles|montre|affiche|donne)\b.*\b(images?|videos?|vdo|publications?)\b",
+                r"\b(combien|liste|lister|quels|quelles|montre|affiche|donne|give|show|list|count|all)\b.*\b(images?|videos?|vdo|publications?|posts?)\b",
                 normalized,
             )
         )

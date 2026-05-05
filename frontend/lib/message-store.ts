@@ -1,7 +1,7 @@
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getPool, queryRows } from "@/lib/db";
 import type { DisplayPayload, FlaskResult } from "@/lib/flask";
-import { extractGeneratedImageUrl } from "@/lib/flask";
+import { extractGeneratedAudioUrl, extractGeneratedImageUrl } from "@/lib/flask";
 
 export type MessageRow = RowDataPacket & {
   id: number;
@@ -49,12 +49,14 @@ export async function insertMessage(
 
 export function buildAssistantMessageOptions(flaskResult: FlaskResult) {
   const generatedImageUrl = extractGeneratedImageUrl(flaskResult);
+  const generatedAudioUrl = extractGeneratedAudioUrl(flaskResult);
+  const mediaDisplay = buildMediaDisplay(flaskResult, generatedAudioUrl);
 
   return {
     text: cleanAssistantText(flaskResult.message),
     assetUrl: generatedImageUrl,
     assetKind: generatedImageUrl ? "image" : null,
-    display: normalizeDisplay(flaskResult.display)
+    display: mediaDisplay ?? normalizeDisplay(flaskResult.display)
   };
 }
 
@@ -116,6 +118,19 @@ export function normalizeDisplay(value: unknown): DisplayPayload | null {
   }
 
   const display = value as DisplayPayload;
+  if (display.type === "media") {
+    if (
+      typeof display.audio_url === "string" && display.audio_url.trim()
+      || typeof display.image_url === "string" && display.image_url.trim()
+      || typeof display.audio_generation_status === "string" && display.audio_generation_status.trim()
+      || typeof display.audio_error === "string" && display.audio_error.trim()
+      || typeof display.music_prompt === "string" && display.music_prompt.trim()
+    ) {
+      return display;
+    }
+    return null;
+  }
+
   if (display.type !== "table") {
     return null;
   }
@@ -124,6 +139,37 @@ export function normalizeDisplay(value: unknown): DisplayPayload | null {
   }
 
   return display;
+}
+
+function buildMediaDisplay(
+  flaskResult: FlaskResult,
+  audioUrl: string | null
+): DisplayPayload | null {
+  const data = flaskResult.data as Record<string, unknown> | undefined;
+  const audioStatus =
+    typeof data?.audio_generation_status === "string"
+      ? data.audio_generation_status
+      : null;
+  const musicPrompt =
+    typeof data?.music_prompt === "string"
+      ? data.music_prompt
+      : null;
+  const audioError =
+    typeof data?.audio_error === "string"
+      ? data.audio_error
+      : null;
+
+  if (!audioUrl && !audioStatus && !audioError && !musicPrompt) {
+    return null;
+  }
+
+  return {
+    type: "media",
+    audio_url: audioUrl,
+    audio_generation_status: audioStatus,
+    audio_error: audioError,
+    music_prompt: musicPrompt
+  };
 }
 
 function extractAssetUrlFromText(text: string) {

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from .audio_service import ImageAudioGenerationError, ImageAudioGenerationService
 from .copywriter import generate_social_posts
 from .engine import (
     ImageGenerationPersistenceError,
@@ -27,6 +28,9 @@ class ImageGenerationRequestValidationError(RuntimeError):
 
 
 class ImageGenerationService:
+    def __init__(self) -> None:
+        self.audio_service = ImageAudioGenerationService()
+
     def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
         media_type = str(payload.get("media_type", "image")).strip().lower()
         generation_mode = str(payload.get("generation_mode", "")).strip().lower()
@@ -93,6 +97,34 @@ class ImageGenerationService:
                 overlay_text=overlay_text,
             )
         )
+        try:
+            audio_result = self.audio_service.generate(
+                context=context,
+                selected_product=selected_product,
+                output_dir=output_dir,
+            )
+        except ImageAudioGenerationError as exc:
+            print(f"[AUDIO] status=failed reason={exc}")
+            audio_result = {
+                "music_prompt": "",
+                "audio_generation_status": "audio_generation_failed",
+                "audio_path": "",
+                "audio_url": "",
+                "audio_error": str(exc),
+            }
+
+        result.update(
+            {
+                "music_prompt": audio_result.get("music_prompt", ""),
+                "audio_generation_status": audio_result.get("audio_generation_status", ""),
+                "audio_path": audio_result.get("audio_path", ""),
+                "audio_url": audio_result.get("audio_url", ""),
+                "audio_error": audio_result.get("audio_error", ""),
+            }
+        )
+        audio_saved_files = audio_result.get("saved_files")
+        if isinstance(audio_saved_files, dict):
+            saved_files.update(audio_saved_files)
         result["saved_files"] = saved_files
         write_metadata(output_dir, result)
 

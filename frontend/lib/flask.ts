@@ -6,12 +6,17 @@ export type DisplayTableColumn = {
 export type DisplayTableRow = Record<string, string>;
 
 export type DisplayPayload = {
-  type?: "table" | "text" | "list" | "badge";
+  type?: "table" | "text" | "list" | "badge" | "media";
   title?: string;
   columns?: DisplayTableColumn[];
   rows?: DisplayTableRow[];
   truncated?: boolean;
   row_count?: number;
+  image_url?: string | null;
+  audio_url?: string | null;
+  audio_generation_status?: string | null;
+  audio_error?: string | null;
+  music_prompt?: string | null;
   [key: string]: unknown;
 };
 
@@ -51,6 +56,16 @@ export function extractGeneratedImageUrl(result: FlaskResult) {
   }
 
   return `/api/media/generated-image?path=${encodeURIComponent(imagePath)}`;
+}
+
+export function extractGeneratedAudioUrl(result: FlaskResult) {
+  const audioPath = getNestedString(result, ["data", "saved_files", "audio_file"])
+    || getNestedString(result, ["data", "audio_path"]);
+  if (audioPath) {
+    return `/api/media/generated-audio?path=${encodeURIComponent(audioPath)}`;
+  }
+
+  return getNestedString(result, ["data", "audio_url"]);
 }
 
 export async function callFlaskOrchestrator(input: {

@@ -56,6 +56,8 @@ class OrchestratorDispatcher:
             media_type = str(classification_result.get("media_type", "")).strip().lower()
             if action == "query_database":
                 return "database_query"
+            if action == "recommend_music" or media_type == "audio":
+                return "music_recommendation"
             if media_type == "video":
                 return "publication_video"
             return "publication_image"

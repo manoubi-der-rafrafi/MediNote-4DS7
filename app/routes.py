@@ -373,6 +373,7 @@ def build_orchestrator_response(
     user_id: int | None = None,
     conversation_id: int | None = None,
 ) -> tuple:
+    print(f"[/orchestrate] status=start demande={demande!r}")
     service = OrchestratorService()
 
     try:
@@ -423,10 +424,12 @@ def build_orchestrator_response(
             502,
         )
     except OrchestratorResponseError as exc:
+        print("[/orchestrate] Response error:")
+        traceback.print_exc()
         return (
             jsonify(
                 {
-                    "error": "La reponse retournee pour l'orchestrateur est invalide.",
+                    "error": "Gemini n'a pas pu generer la reponse finale.",
                     "source": "service_response",
                     "details": str(exc),
                 }
@@ -453,6 +456,8 @@ def build_orchestrator_response(
             502,
         )
     except Exception as exc:
+        print("[/orchestrate] Unhandled error:")
+        traceback.print_exc()
         return (
             jsonify(
                 {
@@ -464,6 +469,12 @@ def build_orchestrator_response(
             500,
         )
 
+    print(
+        "[/orchestrate] status=success "
+        f"result_status={result.get('status') if isinstance(result, dict) else type(result).__name__!r} "
+        f"intent={result.get('intent') if isinstance(result, dict) else ''!r} "
+        f"action={result.get('action') if isinstance(result, dict) else ''!r}"
+    )
     return jsonify(result), 200
 
 
@@ -713,6 +724,32 @@ def generate_video_publication():
 
 @main.get("/media/generated-image")
 def serve_generated_image():
+    raw_path = request.args.get("path", "").strip()
+    if not raw_path:
+        abort(400)
+
+    candidate = Path(raw_path).expanduser()
+    try:
+        resolved = candidate.resolve(strict=True)
+        output_root = OUTPUT_DIR.resolve(strict=True)
+    except FileNotFoundError:
+        abort(404)
+    except Exception:
+        abort(400)
+
+    try:
+        resolved.relative_to(output_root)
+    except ValueError:
+        abort(403)
+
+    if not resolved.is_file():
+        abort(404)
+
+    return send_file(resolved)
+
+
+@main.get("/media/generated-audio")
+def serve_generated_audio():
     raw_path = request.args.get("path", "").strip()
     if not raw_path:
         abort(400)

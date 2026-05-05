@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   Bot,
   Clock3,
+  LayoutDashboard,
   LoaderCircle,
   MessageSquareText,
   Mic,
@@ -529,6 +530,17 @@ export default function HomePage() {
 
         <div className="sidebar-actions">
           <button
+            className="secondary-button"
+            type="button"
+            title="Dashboard"
+            onClick={() => {
+              window.location.href = "http://localhost:3001";
+            }}
+          >
+            <LayoutDashboard size={18} />
+            <span>Dashboard</span>
+          </button>
+          <button
             className="primary-button"
             type="button"
             disabled={hasEmptyConversation}
@@ -890,7 +902,99 @@ function MessageContent({
   return (
     <div className="message-markdown">
       {blocks.map((block, index) => renderMarkdownBlock(block, index))}
+      {display?.type === "media" ? <GeneratedAudioCard display={display} /> : null}
       {display?.type === "table" ? <StructuredTable display={display} /> : null}
+    </div>
+  );
+}
+
+function GeneratedAudioCard({ display }: { display: DisplayPayload }) {
+  const audioUrl = typeof display.audio_url === "string" ? display.audio_url.trim() : "";
+  const status =
+    typeof display.audio_generation_status === "string"
+      ? display.audio_generation_status.trim()
+      : "";
+  const musicPrompt =
+    typeof display.music_prompt === "string" ? display.music_prompt.trim() : "";
+  const audioError =
+    typeof display.audio_error === "string" ? display.audio_error.trim() : "";
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    const handleEnded = () => setIsPlaying(false);
+    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => setIsPlaying(true);
+
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("play", handlePlay);
+    return () => {
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("play", handlePlay);
+    };
+  }, []);
+
+  if (!audioUrl && !status && !audioError && !musicPrompt) {
+    return null;
+  }
+
+  const startAudio = async () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    await audio.play().catch(() => {
+      setIsPlaying(false);
+    });
+  };
+
+  const pauseAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.pause();
+  };
+
+  const stopAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.pause();
+    audio.currentTime = 0;
+    setIsPlaying(false);
+  };
+
+  return (
+    <div className="message-asset-card">
+      {audioUrl ? <audio ref={audioRef} src={audioUrl} preload="none" /> : null}
+      {audioUrl ? (
+        <div className="message-audio-controls">
+          <button type="button" className="primary-button" onClick={() => void startAudio()}>
+            <Volume2 size={16} />
+            <span>{isPlaying ? "En lecture" : "Demarrer"}</span>
+          </button>
+          <button type="button" className="icon-button" onClick={pauseAudio}>
+            <VolumeX size={16} />
+            <span className="sr-only">Pause</span>
+          </button>
+          <button type="button" className="danger-button" onClick={stopAudio}>
+            <Square size={16} />
+            <span>Arreter</span>
+          </button>
+        </div>
+      ) : null}
+      {status ? <p className="message-asset-meta">Statut audio: {status}</p> : null}
+      {audioError ? <p className="message-asset-meta is-error">Erreur audio: {audioError}</p> : null}
+      {musicPrompt ? <p className="message-asset-meta">{musicPrompt}</p> : null}
     </div>
   );
 }

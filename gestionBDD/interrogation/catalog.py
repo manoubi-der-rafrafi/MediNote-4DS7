@@ -48,6 +48,11 @@ TABLE_CATALOG: dict[str, dict[str, Any]] = {
             "produit",
             "product_url",
             "image_url",
+            "audio_path",
+            "audio_url",
+            "audio_generation_status",
+            "audio_error",
+            "music_prompt",
             "date_occasion",
             "date_publication",
             "created_at",
@@ -157,6 +162,8 @@ def resolve_tables_for_query(classification_result: dict[str, Any]) -> list[str]
     if media_scope == "video":
         return ["generated_videos"]
     if media_scope == "both":
+        return ["generated_images", "generated_videos"]
+    if not media_scope:
         return ["generated_images", "generated_videos"]
     return []
 
