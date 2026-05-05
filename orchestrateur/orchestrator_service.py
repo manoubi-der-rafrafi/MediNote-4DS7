@@ -698,8 +698,11 @@ class OrchestratorService:
             payload = self._parse_json(response_text)
             if isinstance(payload, dict) and isinstance(payload.get("message"), str):
                 return payload["message"].strip()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(
+                "[RESPONSE] methode=gemini_explanation "
+                f"status=failed reason={exc.__class__.__name__}: {exc}"
+            )
 
         return self._build_fallback_message(
             response_payload,
@@ -947,7 +950,11 @@ class OrchestratorService:
                 if bool(data.get("truncated", False))
                 else ""
             )
-            return f"## {heading}\n\nJ'ai trouve {row_count} resultat(s) dans la base de donnees.{suffix}"
+            return (
+                f"## {heading}\n\n"
+                f"Voici le tableau des {row_count} resultat(s) trouves dans la base de donnees."
+                f"{suffix}"
+            )
 
         if not isinstance(rows, list) or not rows:
             if is_arabic:

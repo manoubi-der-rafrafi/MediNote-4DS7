@@ -1,11 +1,10 @@
-from .errors import (
+from .orchestrator_service import (
     OrchestratorConfigError,
     OrchestratorMissingDataError,
     OrchestratorProcessingError,
     OrchestratorRequestError,
     OrchestratorResponseError,
 )
-from .service import OrchestratorService
 
 __all__ = [
     "OrchestratorConfigError",
@@ -13,5 +12,4 @@ __all__ = [
     "OrchestratorProcessingError",
     "OrchestratorRequestError",
     "OrchestratorResponseError",
-    "OrchestratorService",
 ]
