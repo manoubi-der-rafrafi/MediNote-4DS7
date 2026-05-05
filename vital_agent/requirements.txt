@@ -1,8 +1,19 @@
+flask
+google-genai
+pydantic
+hijridate
 pandas
 openpyxl
-scikit-learn
+Pillow
 numpy
 requests
+huggingface_hub
+sqlalchemy
+pymysql
+pyttsx3
+faiss-cpu
+sentence-transformers
+# Pour GPU (optionnel) : remplacer faiss-cpu par faiss-gpu
 # Pour le mode local uniquement (décommenter si LLM_MODE = "local") :
 # torch
 # transformers

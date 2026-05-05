@@ -7,8 +7,10 @@ openpyxl
 Pillow
 numpy
 requests
-scikit-learn
 huggingface_hub
 sqlalchemy
 pymysql
 pyttsx3
+faiss-cpu
+sentence-transformers
+# Pour GPU (optionnel) : remplacer faiss-cpu par faiss-gpu
