@@ -92,6 +92,7 @@ Regles:
 - Ne jamais recopier une consigne utilisateur comme `Peux-tu structurer ce rapport ?` dans le champ `rapport`.
 - Utiliser "non_precise" pour `media_type` si le media n'est pas precis.
 - Utiliser `generation_mode="next_occasion"` seulement si l'utilisateur demande explicitement l'occasion la plus proche ou une formulation equivalente.
+- Les formulations equivalentes a l'idee de prochain evenement ou evenement a venir (`next event`, `upcoming event`, `prochain evenement`, etc.) doivent etre mappees vers `generation_mode="next_occasion"` et non vers `given_occasion`.
 - Utiliser `generation_mode="exam_period"` si la demande parle d'examens, bac, revision, concours, session d'examen ou formulation equivalente.
 - Utiliser `generation_mode="given_occasion"` si l'utilisateur fournit une fete, une saison ou une occasion explicite.
 - Utiliser `generation_mode="missing"` si la demande concerne une publication mais ne precise pas assez le contexte.

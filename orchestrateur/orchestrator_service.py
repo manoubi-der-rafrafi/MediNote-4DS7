@@ -2,6 +2,7 @@ import json
 import re
 from typing import Any
 
+from hashem_integration import HashemChatService, HashemIntegrationError
 from pydantic import ValidationError
 
 from conversation import ConversationAccessError, ConversationTaskService
@@ -32,6 +33,7 @@ from .gemini_client import (
     GeminiClientConfigError,
     generate_content_with_key_rotation,
 )
+from .hashem_router import HashemRouter, should_try_hashem_fallback
 from .prompts import (
     ORCHESTRATOR_EXPLANATION_SYSTEM_PROMPT,
     ORCHESTRATOR_SYSTEM_PROMPT,
@@ -61,7 +63,12 @@ class OrchestratorProcessingError(RuntimeError):
 
 
 class OrchestratorService:
-    def __init__(self, model_name: str = DEFAULT_MODEL_NAME) -> None:
+    def __init__(
+        self,
+        model_name: str = DEFAULT_MODEL_NAME,
+        hashem_router: HashemRouter | None = None,
+        hashem_chat_service: HashemChatService | None = None,
+    ) -> None:
         self.model_name = model_name
         self.report_service = StructurationRapportService()
         self.publication_service = PublicationService()
@@ -69,6 +76,8 @@ class OrchestratorService:
         self.database_query_service = DatabaseQueryService(model_name=model_name)
         self.product_service = ProductService()
         self.conversation_task_service = ConversationTaskService()
+        self.hashem_router = hashem_router or HashemRouter()
+        self.hashem_chat_service = hashem_chat_service or HashemChatService()
 
     def handle(
         self,
@@ -152,6 +161,15 @@ class OrchestratorService:
             if parsed is not None:
                 if isinstance(parsed, (dict, list)):
                     parsed = self._with_response_language(parsed, user_request)
+                    parsed = self._normalize_classification_result(parsed, user_request)
+                    delegated_response = self._try_hashem_fallback(
+                        user_request=user_request,
+                        classification_result=parsed,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                    )
+                    if delegated_response is not None:
+                        return delegated_response
                     return self._finalize_response(
                         None,
                         user_request,
@@ -161,10 +179,21 @@ class OrchestratorService:
                         conversation_id=conversation_id,
                     )
                 if isinstance(parsed, str):
-                    parsed_json = self._with_response_language(
-                        self._parse_json(parsed),
+                    parsed_json = self._normalize_classification_result(
+                        self._with_response_language(
+                            self._parse_json(parsed),
+                            user_request,
+                        ),
                         user_request,
                     )
+                    delegated_response = self._try_hashem_fallback(
+                        user_request=user_request,
+                        classification_result=parsed_json,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                    )
+                    if delegated_response is not None:
+                        return delegated_response
                     return self._finalize_response(
                         None,
                         user_request,
@@ -173,10 +202,21 @@ class OrchestratorService:
                         user_id=user_id,
                         conversation_id=conversation_id,
                     )
-                parsed_json = self._with_response_language(
-                    self._parse_json(json.dumps(parsed)),
+                parsed_json = self._normalize_classification_result(
+                    self._with_response_language(
+                        self._parse_json(json.dumps(parsed)),
+                        user_request,
+                    ),
                     user_request,
                 )
+                delegated_response = self._try_hashem_fallback(
+                    user_request=user_request,
+                    classification_result=parsed_json,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                )
+                if delegated_response is not None:
+                    return delegated_response
                 return self._finalize_response(
                     None,
                     user_request,
@@ -187,10 +227,21 @@ class OrchestratorService:
                 )
 
             response_text = getattr(response, "text", "")
-            parsed_response = self._with_response_language(
-                self._parse_json(response_text),
+            parsed_response = self._normalize_classification_result(
+                self._with_response_language(
+                    self._parse_json(response_text),
+                    user_request,
+                ),
                 user_request,
             )
+            delegated_response = self._try_hashem_fallback(
+                user_request=user_request,
+                classification_result=parsed_response,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+            if delegated_response is not None:
+                return delegated_response
             return self._finalize_response(
                 None,
                 user_request,
@@ -219,6 +270,7 @@ class OrchestratorService:
             PublicationRequestError,
             PublicationResponseError,
             ProductServiceError,
+            HashemIntegrationError,
         ) as exc:
             if isinstance(exc, ConversationAccessError):
                 raise OrchestratorProcessingError(str(exc)) from exc
@@ -228,11 +280,40 @@ class OrchestratorService:
                 raise OrchestratorRequestError(str(exc)) from exc
             if isinstance(exc, DatabaseQueryResponseError):
                 raise OrchestratorResponseError(str(exc)) from exc
+            if isinstance(exc, HashemIntegrationError):
+                raise OrchestratorProcessingError(str(exc)) from exc
             raise OrchestratorProcessingError(str(exc)) from exc
         except OrchestratorMissingDataError:
             raise
         except Exception as exc:
             raise OrchestratorResponseError(str(exc)) from exc
+
+    def _try_hashem_fallback(
+        self,
+        user_request: str,
+        classification_result: dict[str, Any] | list[Any],
+        user_id: int | None = None,
+        conversation_id: int | None = None,
+    ) -> dict[str, Any] | None:
+        if not should_try_hashem_fallback(classification_result):
+            return None
+
+        decision = self.hashem_router.detect(user_request)
+        if not decision.should_route:
+            return None
+
+        response_language = (
+            self._normalize_response_language(classification_result.get("response_language"))
+            if isinstance(classification_result, dict)
+            else None
+        ) or self._detect_response_language(user_request)
+
+        return self.hashem_chat_service.handle(
+            user_request=user_request,
+            response_language=response_language,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
 
     def _finalize_response(
         self,
@@ -1691,16 +1772,7 @@ class OrchestratorService:
             media_type = "video"
 
         generation_mode = "missing"
-        if any(
-            keyword in normalized
-            for keyword in (
-                "prochaine occasion",
-                "occasion la plus proche",
-                "prochaine fete",
-                "fete la plus proche",
-                "prochain evenement",
-            )
-        ):
+        if OrchestratorService._looks_like_next_occasion_request(normalized):
             generation_mode = "next_occasion"
         elif any(keyword in normalized for keyword in ("examen", "examens", "exam", "bac", "revision", "révision")):
             generation_mode = "exam_period"
@@ -2133,6 +2205,8 @@ class OrchestratorService:
             return None
 
         normalized = OrchestratorService._normalize_text(lowered)
+        if OrchestratorService._looks_like_next_occasion_request(normalized):
+            return None
         if "saison en cours" in normalized:
             return "saison en cours"
 
@@ -2163,6 +2237,72 @@ class OrchestratorService:
         ).strip()
         fragment = re.sub(r"[?.!,;:]+$", "", fragment).strip()
         return fragment or None
+
+    @staticmethod
+    def _normalize_classification_result(
+        classification_result: dict[str, Any] | list[Any],
+        user_request: str,
+    ) -> dict[str, Any] | list[Any]:
+        if not isinstance(classification_result, dict):
+            return classification_result
+
+        intent = str(classification_result.get("intent", "")).strip().lower()
+        if intent != "publication":
+            return classification_result
+
+        normalized_request = OrchestratorService._normalize_text(user_request)
+        normalized_result = dict(classification_result)
+        generation_mode = str(normalized_result.get("generation_mode", "")).strip().lower()
+        occasion = str(normalized_result.get("occasion", "")).strip()
+
+        if (
+            generation_mode == "given_occasion"
+            and OrchestratorService._looks_like_generic_next_event(occasion)
+        ) or (
+            generation_mode in {"", "missing"}
+            and OrchestratorService._looks_like_next_occasion_request(normalized_request)
+        ):
+            normalized_result["generation_mode"] = "next_occasion"
+            normalized_result["occasion"] = None
+
+        return normalized_result
+
+    @staticmethod
+    def _looks_like_next_occasion_request(normalized: str) -> bool:
+        next_occasion_markers = (
+            "prochaine occasion",
+            "occasion la plus proche",
+            "prochaine fete",
+            "fete la plus proche",
+            "prochain evenement",
+            "evenement a venir",
+            "next occasion",
+            "nearest occasion",
+            "next event",
+            "upcoming event",
+            "upcoming occasion",
+            "coming event",
+            "uncoming event",
+        )
+        return any(marker in normalized for marker in next_occasion_markers)
+
+    @staticmethod
+    def _looks_like_generic_next_event(value: str) -> bool:
+        normalized = OrchestratorService._normalize_text(value)
+        if not normalized:
+            return False
+
+        generic_event_markers = (
+            "next event",
+            "upcoming event",
+            "upcoming occasion",
+            "coming event",
+            "uncoming event",
+            "prochain evenement",
+            "evenement a venir",
+            "prochaine occasion",
+        )
+        return any(marker == normalized for marker in generic_event_markers)
 
     @staticmethod
     def _normalize_text(value: str) -> str:

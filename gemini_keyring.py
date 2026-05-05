@@ -25,7 +25,7 @@ def get_api_keys() -> list[str]:
                 if item.strip()
             )
 
-    for index in range(1, 9):
+    for index in range(1, 11):
         value = os.getenv(f"GEMINI_API_KEY_{index}")
         if value and value.strip():
             candidates.append(value.strip())
@@ -40,7 +40,7 @@ def get_api_keys() -> list[str]:
     if not deduped:
         raise GeminiKeyConfigError(
             "Aucune cle Gemini trouvee. Configurez GEMINI_API_KEY, GEMINI_API_KEYS, "
-            "ou GEMINI_API_KEY_1 jusqu'a GEMINI_API_KEY_8."
+            "ou GEMINI_API_KEY_1 jusqu'a GEMINI_API_KEY_10."
         )
 
     return deduped

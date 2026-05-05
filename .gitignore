@@ -4,6 +4,11 @@
 .tmp/
 __pycache__/
 *.py[cod]
+frontend/node_modules/
+frontend/.next/
+frontend/.next-dev/
+frontend/*.log
+frontend/tsconfig.tsbuildinfo
 
 # Generated assets / datasets
 gestionPublication/output/
