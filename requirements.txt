@@ -1,0 +1,17 @@
+flask
+google-genai
+pydantic
+hijridate
+pandas
+openpyxl
+Pillow
+numpy
+requests
+scikit-learn
+huggingface_hub
+sqlalchemy
+pymysql
+pyttsx3
+
+reportlab>=4.0.0
+Pillow>=10.0.0

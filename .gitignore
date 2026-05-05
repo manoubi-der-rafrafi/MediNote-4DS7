@@ -1,0 +1,19 @@
+.env
+.venv/
+.venv_broken/
+.tmp/
+__pycache__/
+*.py[cod]
+frontend/node_modules/
+frontend/.next/
+frontend/.next-dev/
+frontend/*.log
+frontend/tsconfig.tsbuildinfo
+
+# Generated assets / datasets
+gestionPublication/output/
+gestionPublication/generationImage/ranim data/
+
+# OS/editor
+.DS_Store
+Thumbs.db
